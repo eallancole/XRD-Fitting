@@ -77,7 +77,7 @@ class Graphite_LiC12(Peak):
             
         
 class Graphite_One_Big(Graphite_LiC12):
-    example_file_path = r"C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing\Peak\Graphite_LiC12\Graphite_One_Big\fit_26.csv"
+    example_file_path = r"Peak\Graphite_LiC12\Graphite_One_Big\fit_26.chi"
     
     def __init__(self,name = 'Graphite_One_Big', q_min = 1.75, q_max = 1.9, 
                  chi_squared = 500, sigma = .005, amplitude = 5):
@@ -85,7 +85,7 @@ class Graphite_One_Big(Graphite_LiC12):
         
         
 class Graphite_Small_Big(Graphite_LiC12):
-    example_file_path = r"C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing\Peak\Graphite_LiC12\Graphite_Small_Big\fit_72.csv"
+    example_file_path = r"\Peak\Graphite_LiC12\Graphite_Small_Big\fit_72.csv"
     
     def __init__(self,name = 'Graphite_Small_Big', q_min = 1.75, q_max = 1.9, 
                  chi_squared = 500, sigma = [0.002, .005], amplitude = [0.2, 3]):
@@ -99,7 +99,7 @@ class Graphite_Small_Big(Graphite_LiC12):
   
     
 class Graphite_One_Small(Graphite_LiC12):
-    example_file_path = r"C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing\Peak\Graphite_LiC12\Graphite_One_Small\fit_32.csv"
+    example_file_path = r"\Peak\Graphite_LiC12\Graphite_One_Small\fit_32.csv"
     
     def __init__(self,name = 'Graphite_One_Small', q_min = 1.75, q_max = 1.9, 
                  chi_squared = 500, sigma = .005, amplitude = 5):
@@ -107,9 +107,11 @@ class Graphite_One_Small(Graphite_LiC12):
   
     
   
+  
     
 # # driver code 
 # test = Graphite_LiC12('frank', 1.75, 1.9, 500, 0.005, 5) 
+# print('here', test.name)
 # sub_classes = Graphite_LiC12.__subclasses__()
 # #df = pd.read_csv(r"C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing\Peak\fit_66.csv")
 # df = pd.read_csv(r"C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing\Peak\fit_28.csv")

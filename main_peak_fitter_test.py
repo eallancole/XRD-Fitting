@@ -4,7 +4,7 @@ Created on Fri Mar 24 10:43:36 2023
 
 @author: Elizabeth Allan-Cole
 """
-import peak_fitter_functions as pf
+import peak_fitter_functions_test as pf
 import numpy as np
 import pandas as pd
 import os
@@ -24,7 +24,7 @@ from lmfit.model import save_modelresult, load_modelresult
 import math
 import time
 import itertools as it
-from abstract_peak_classes import *
+from abstract_peak_classes_test import *
 
 
 
@@ -58,9 +58,9 @@ df_integrals = pd.DataFrame(columns=['Sample', 'file_name', 'x motor', 'y motor'
 # path to all the tiff files
 general_input_folder = r'D:\NSLS-II Winter 2023'
 #general_input_folder = r'D:\NSLS-II June 2023'
-input_folder = os.path.join(general_input_folder, sample_name, 'integration')
+input_folder ="test_files"# os.path.join(general_input_folder, sample_name, 'integration')
 
-general_output_folder = r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing'
+general_output_folder = "output"
 #general_output_folder = r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Summer 2023\Initial_Data'
 output_folder = os.path.join(general_output_folder,  'Output',  sample_name)
 plot_folder = os.path.join(general_output_folder, 'Plot Output')
@@ -94,7 +94,7 @@ q_range_dict = {'Graphite_LiC12':[1.75, 1.9, 500, 0.005, 5]} #Stage 2, 3, 4
 
 # Make a list of all files names in folder
 list_of_files = [files for files in listdir(input_folder) if isfile(join(input_folder, files))]
-
+print(list_of_files)
 
 for element_name, element_values in q_range_dict.items(): # for each peak defined in q_rage_dict
 
@@ -144,8 +144,8 @@ for element_name, element_values in q_range_dict.items(): # for each peak define
         #     break
         #i = 150
         # 
-        i_list = [74]# [26, 28, 32, 66, 68,70,  72, 74, 75, 78, 80]
-        if i in i_list:
+        #i_list = [74]# [26, 28, 32, 66, 68,70,  72, 74, 75, 78, 80]
+        if True: #i in i_list:
 
             if 'mean_q' in list_of_files[i]:
                 print('i', i, '\n')

@@ -614,7 +614,7 @@ def master_function(i, read_sample_file, num_of_centers,  data_path, q_min, q_ma
     
     # Make a dataframe of the entire XRD pattern
     df = make_dataframe(read_sample_file, data_path)
-    df.to_csv(r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing\Peak\fit_%s.csv' % i)
+    #df.to_csv(r'Class-testing\Peak\fit_%s.csv' % i)
     
     #TODO Normalize data
     #df_norm = normalize_data(df)

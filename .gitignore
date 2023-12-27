@@ -1,0 +1,11 @@
+
+.idea/inspectionProfiles/profiles_settings.xml
+.idea/inspectionProfiles/Project_Default.xml
+.idea/misc.xml
+.idea/modules.xml
+.idea/vcs.xml
+.idea/XRD-Fitting.iml
+*.pyc
+Peak/Graphite_LiC12/Graphite_One_Big/fit_26.chi
+Peak/Graphite_LiC12/Graphite_One_Small/S1_LN_10psi_Ch10_0120922_map_02_20230302-124231_911e81_ss_stg2_y_64,50mm_sample_x_89,00mm_primary-2_mean_q.chi
+Peak/Graphite_LiC12/Graphite_Small_Big/fit_72.chi
