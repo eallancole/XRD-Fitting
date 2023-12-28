@@ -56,14 +56,14 @@ df_integrals = pd.DataFrame(columns=['Sample', 'file_name', 'x motor', 'y motor'
 # TO DO need to add in chi squared and look at how model feeds in
 
 # path to all the tiff files
-general_input_folder = r'D:\NSLS-II Winter 2023'
-#general_input_folder = r'D:\NSLS-II June 2023'
-input_folder ="test_files"# os.path.join(general_input_folder, sample_name, 'integration')
+#general_input_folder = r'D:\NSLS-II Winter 2023'
+general_input_folder = 'test_files'
+input_folder =r"C:\Users\benk\Documents\GitHub\XRD-Fitting\test_files"# os.path.join(general_input_folder, sample_name, 'integration')
 
-general_output_folder = "output"
+general_output_folder = r'C:\Users\benk\Documents\GitHub\XRD-Fitting'
 #general_output_folder = r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Summer 2023\Initial_Data'
-output_folder = os.path.join(general_output_folder,  'Output',  sample_name)
-plot_folder = os.path.join(general_output_folder, 'Plot Output')
+output_folder = os.path.join('.\\', general_output_folder,  'Output',  sample_name)
+plot_folder = os.path.join('.\\', general_output_folder, 'Plot Output')
 
 # if that folder dosn't exist make it exist
 if not os.path.exists(output_folder):

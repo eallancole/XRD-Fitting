@@ -57,13 +57,13 @@ def get_xy_motor(sample_name, data_path, general_input_folder):
         else:
             # Find the x_motor position in the file title using Regex
             start_x = re.search('_x_', sample_name).end()
-            end_x = re.search('mm_sample', sample_name).start() 
+            end_x = re.search('mm_primary', sample_name).start() 
             x_motor = sample_name[start_x:end_x].replace(',', '.')
             x_motor = float(x_motor)
     
             # Find the y_motor position in the file title using Regex
             start_y = re.search('_y_', sample_name).end()
-            end_y = re.search('mm_primary', sample_name).start()
+            end_y = re.search('mm_sample_x', sample_name).start()
             y_motor = sample_name[start_y:end_y].replace(',', '.')
             y_motor = float(y_motor)
     
@@ -121,53 +121,53 @@ def get_points(df,q_min,q_max):
     return sliced_q, sliced_I
 
 
-def make_model(q_max, q_min, model_centers, sig, amp):
-    background = LinearModel(prefix=('b' + '_'))  
-    pars = background.make_params()
+# def make_model(q_max, q_min, model_centers, sig, amp):
+#     background = LinearModel(prefix=('b' + '_'))  
+#     pars = background.make_params()
     
-    model = background
+#     model = background
     
-    # initial guesses     
-    slope1 = 0 
-    int1 = 50
+#     # initial guesses     
+#     slope1 = 0 
+#     int1 = 50
     
-    # For linear background
-    pars = background.make_params()
-    pars['b' + '_slope'].set(slope1)
-    pars['b' + '_intercept'].set(int1)
+#     # For linear background
+#     pars = background.make_params()
+#     pars['b' + '_slope'].set(slope1)
+#     pars['b' + '_intercept'].set(int1)
     
     
-    # background = PolynomialModel(prefix=('b' + '_'))
-    # pars = background.make_params()
+#     # background = PolynomialModel(prefix=('b' + '_'))
+#     # pars = background.make_params()
     
-    # model = background
+#     # model = background
     
-    # # initial guesses     
-    # a = 1
-    # b = 1
-    # c = 1
-    # pars = background.make_params()
-    # pars['b' + '_c0'].set(a)
-    # pars['b' + '_c1'].set(b)
-    # pars['b' + '_c2'].set(b)
+#     # # initial guesses     
+#     # a = 1
+#     # b = 1
+#     # c = 1
+#     # pars = background.make_params()
+#     # pars['b' + '_c0'].set(a)
+#     # pars['b' + '_c1'].set(b)
+#     # pars['b' + '_c2'].set(b)
     
       
-    for peak, center in enumerate(model_centers):
-        # create prefex for each peak
-        pref = 'v'+str(peak)+'_'
-        #peak = GaussianModel(prefix=pref)
-        peak = VoigtModel(prefix=pref)
-        # set the parimiters for each peak
-        pars.update(peak.make_params())
-        #pars[pref+'center'].set(value=center, min=q_min, max=q_max)
-        pars[pref+'center'].set(value=center, min= center - 0.025, max= center + 0.025)
-        pars[pref+'sigma'].set(value=sig, max = sig * 5)
-        pars[pref+'amplitude'].set(amp, min = 0)
-        pars[pref+'gamma'].set(value=sig, vary=True, expr='', min = 0)
+#     for peak, center in enumerate(model_centers):
+#         # create prefex for each peak
+#         pref = 'v'+str(peak)+'_'
+#         #peak = GaussianModel(prefix=pref)
+#         peak = VoigtModel(prefix=pref)
+#         # set the parimiters for each peak
+#         pars.update(peak.make_params())
+#         #pars[pref+'center'].set(value=center, min=q_min, max=q_max)
+#         pars[pref+'center'].set(value=center, min= center - 0.025, max= center + 0.025)
+#         pars[pref+'sigma'].set(value=sig, max = sig * 5)
+#         pars[pref+'amplitude'].set(amp, min = 0)
+#         pars[pref+'gamma'].set(value=sig, vary=True, expr='', min = 0)
         
-        model = model + peak
+#         model = model + peak
 
-    return (model, pars)
+#     return (model, pars)
 
 #Function get_model_list currently not used, this function creates a list of centers based on the q range rather than expected peaks with prominence
 def get_model_list(q_max, q_min, num_of_centers, num_peaks, sig, amp, peak_name, Li_q_max, Li_q_min, x_motor, y_motor):
@@ -220,21 +220,21 @@ def guess_amp(prominence_list, width_list):
     return amp_list
     
 
-def get_prom_model_list(q_max, q_min, center_list, sig, amp, peak_name):
+# def get_prom_model_list(q_max, q_min, center_list, sig, amp, peak_name):
     
-    model_list = []
+#     model_list = []
     
-    if peak_name == 'Li':
-        for centers in range(len(center_list)):
-            model_list.append(lpf.make_Li_model(q_max, q_min, center_list[centers], sig, amp))
+#     if peak_name == 'Li':
+#         for centers in range(len(center_list)):
+#             model_list.append(lpf.make_Li_model(q_max, q_min, center_list[centers], sig, amp))
 
-        return (model_list)
-    # make a list of models for each center combination option
+#         return (model_list)
+#     # make a list of models for each center combination option
     
-    for centers in range(len(center_list)):
-        model_list.append(make_model(q_max, q_min, center_list[centers], sig, amp))
+#     for centers in range(len(center_list)):
+#         model_list.append(make_model(q_max, q_min, center_list[centers], sig, amp))
     
-    return(model_list)  
+#     return(model_list)  
 
 
 def run_model(sliced_q, sliced_I, model, pars):
@@ -378,32 +378,29 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp,
         
         specific_peak = general_peak.find_best_sub_peak(sliced_I)
         # Get the peak center ('peak') and the prominences of the peak
-        peaks, properties = specific_peak.my_find_peaks(sliced_I, prominence = (1, None), width = (0,None))
+        peak_vals = specific_peak.intial_values(sliced_I, sliced_q)
+
         #find_peaks(sliced_I, prominence = (1, None), width = (0,None))
-        print('prom:', properties['prominences'])
-        print('width:', properties['widths'])
-        prom = properties['prominences']
-        
-        
+
         #center_list should be the q value corresponding to peaks(peaks is the index for the peaks found with find_peaks using peak prominence)
-        center_list = np.take(sliced_q, peaks)
-        print('centers', center_list)
+        # center_list = np.take(sliced_q, peaks)
+        # print('centers', center_list)
         #print('Old Tomato: ', sig, amp, chisqu_fit_value, center_list)
-        if peak_name == 'NMC-003':
-            sig, amp, chisqu_fit_value, center_list = lpf.NMC_003_peak_conditions(prom, center_list, sig, amp, chisqu_fit_value)
+        # if peak_name == 'NMC-003':
+        #     sig, amp, chisqu_fit_value, center_list = lpf.NMC_003_peak_conditions(prom, center_list, sig, amp, chisqu_fit_value)
         
-        if peak_name == 'NMC-other': 
-            sig, amp, chisqu_fit_value, center_list = lpf.NMC_other_peak_conditions(prom, center_list, sig, amp, chisqu_fit_value)
+        # if peak_name == 'NMC-other': 
+        #     sig, amp, chisqu_fit_value, center_list = lpf.NMC_other_peak_conditions(prom, center_list, sig, amp, chisqu_fit_value)
         
         #print('New Tomato: ', sig, amp, chisqu_fit_value, center_list)
-        num_peaks = len(center_list)
-        new_center_list = []
+        # num_peaks = len(center_list)
+        # new_center_list = []
         
-        # Creates target gueses close to the identified peaks (+/- 10% sigma away from center) 
-        for center in range(num_peaks):
-            new_center_list.append(ufo.make_center_list(center_list[center], sig))
+        # # Creates target gueses close to the identified peaks (+/- 10% sigma away from center) 
+        # for center in range(num_peaks):
+        #     new_center_list.append(ufo.make_center_list(center_list[center], sig))
         
-        new_center_list = ufo.iterate_centers(new_center_list)
+        # new_center_list = ufo.iterate_centers(new_center_list)
         
         # returns a list of tuples. first value is the model second value is the pars. This looks like this ((model, pars), (model, pars), ...)
         model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name)
@@ -614,7 +611,7 @@ def master_function(i, read_sample_file, num_of_centers,  data_path, q_min, q_ma
     
     # Make a dataframe of the entire XRD pattern
     df = make_dataframe(read_sample_file, data_path)
-    #df.to_csv(r'Class-testing\Peak\fit_%s.csv' % i)
+    df.to_csv(r'C:\Users\benk\Documents\GitHub\XRD-Fitting\Peak\fit_%s.csv' % i)
     
     #TODO Normalize data
     #df_norm = normalize_data(df)
