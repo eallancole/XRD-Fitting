@@ -8,7 +8,7 @@ Created on Tue Apr 25 12:43:40 2023
 import peak_fitter_functions as pf
 from matplotlib import pyplot as plt
 from lmfit import Model
-from lmfit.models import LinearModel, GaussianModel, ExponentialModel, ConstantModel, PowerLawModel, PolynomialModel, LorentzianModel, VoigtModel
+from lmfit.models import LinearModel, GaussianModel, PolynomialModel, LorentzianModel, VoigtModel, PseudoVoigtModel
 import itertools as it
 from joblib import Parallel, delayed
 import numpy as np
@@ -37,64 +37,94 @@ def iterate_centers(center_list):
         
     return new_target_center_list
 
-def make_target_model(q_max, q_min, model_centers, sig_list, amp_list, b_slope):
-    background = LinearModel(prefix=('b' + '_'))  
-    pars = background.make_params()
-    
-    model = background
-    
-    # initial guesses     
-    slope1 = (float(b_slope[0]) + float(b_slope[1]))/2
-    int1 = 50
-    
-    # For linear background
-    pars = background.make_params()
-    pars['b' + '_slope'].set(slope1, vary = True, min = float(b_slope[0]), max = float(b_slope[1]))
-    pars['b' + '_intercept'].set(int1, vary = True)
+def make_target_model(q_max, q_min, model_centers, sig_list, amp_list, b_slope, peak_name):
+    if 'Graphite-LiC12' in peak_name: 
+        background = PolynomialModel(degree = 3, prefix=('b' + '_'))
+        pars = background.make_params()
+        
+        model = background
+        
+        # initial guesses     
+        a, b, c, d = 1, 1, 1, 1
+        pars = background.make_params()
+        pars['b' + '_c0'].set(value = a)
+        pars['b' + '_c1'].set(value = b)
+        pars['b' + '_c2'].set(value = c)
+        pars['b' + '_c3'].set(value = d)
+
+    else: 
+        background = LinearModel(prefix=('b' + '_'))  
+        pars = background.make_params()
+        
+        model = background
+        
+        # initial guesses     
+        slope1 = (float(b_slope[0]) + float(b_slope[1]))/2
+        int1 = 50
+        
+        # For linear background
+        pars = background.make_params()
+        pars['b' + '_slope'].set(slope1, vary = True, min = float(b_slope[0]), max = float(b_slope[1]))
+        pars['b' + '_intercept'].set(int1, vary = True)
     
     index = 0
     for peak, center in enumerate(model_centers): 
         # create prefex for each peak
         pref = 'v'+str(peak)+'_'
-        #peak = GaussianModel(prefix=pref)
-        peak = VoigtModel(prefix=pref)
+        peak = PseudoVoigtModel(prefix=pref)
+        # peak = VoigtModel(prefix=pref)
         # set the parimiters for each peak
         pars.update(peak.make_params())
         #pars[pref+'center'].set(value=center, min=q_min, max=q_max)
         pars[pref+'center'].set(value=center, min= center - 0.025, max= center + 0.025)
         pars[pref+'sigma'].set(value=sig_list[index], max = sig_list[index] * 2)
         pars[pref+'amplitude'].set(amp_list[index], min = 0, max = amp_list[index] * 2) #THIS IS APPARENTLY THE AREA
-        pars[pref+'gamma'].set(value=sig_list[index], vary=True, expr='', min = 0)
+        #pars[pref+'gamma'].set(value=sig, vary=True, expr='', min = 0) #Use for a Voigt Model
+        pars[pref+'fraction'].set(value=0.5, vary=True) #Use for a Voigt Model
         index += 1
         
         model = model + peak
 
     return (model, pars)
 
-def make_linear_model(q_max, q_min, b_slope):
-    background = LinearModel(prefix=('b' + '_'))  
-    pars = background.make_params()
-    
-    model = background
-    
-    # initial guesses     
-    slope1 = (float(b_slope[0]) + float(b_slope[1]))/2
-    int1 = 50
-    
-    # For linear background
-    pars = background.make_params()
-    pars['b' + '_slope'].set(slope1, vary = True, min = float(b_slope[0]), max = float(b_slope[1]))
-    pars['b' + '_intercept'].set(int1, vary = True)
+def make_linear_model(q_max, q_min, b_slope, peak_name):
+    if 'Graphite-LiC12' in peak_name: 
+        background = PolynomialModel(degree = 3, prefix=('b' + '_'))
+        pars = background.make_params()
+        
+        model = background
+        
+        # initial guesses     
+        a, b, c, d = 1, 1, 1, 1
+        pars = background.make_params()
+        pars['b' + '_c0'].set(value = a)
+        pars['b' + '_c1'].set(value = b)
+        pars['b' + '_c2'].set(value = c)
+        pars['b' + '_c3'].set(value = d)
+    else: 
+        background = LinearModel(prefix=('b' + '_'))  
+        pars = background.make_params()
+        
+        model = background
+        
+        # initial guesses     
+        slope1 = (float(b_slope[0]) + float(b_slope[1]))/2
+        int1 = 50
+        
+        # For linear background
+        pars = background.make_params()
+        pars['b' + '_slope'].set(slope1, vary = True, min = float(b_slope[0]), max = float(b_slope[1]))
+        pars['b' + '_intercept'].set(int1, vary = True)
     
     return (model, pars)
 
 
-def targeted_model(new_center_list, sig_list, amp_list, q_max, q_min, sliced_q, sliced_I, b_slope):
+def targeted_model(new_center_list, sig_list, amp_list, q_max, q_min, sliced_q, sliced_I, b_slope, peak_name):
     model_list = []
     for i in range(len(new_center_list)):
         center_combo = new_center_list[i]
         for center in center_combo:
-            model_list.append(make_target_model(q_max, q_min, center_combo, sig_list, amp_list, b_slope))
+            model_list.append(make_target_model(q_max, q_min, center_combo, sig_list, amp_list, b_slope, peak_name))
     
     model_result_list = []
     model_result_list = Parallel(n_jobs=2)(delayed(pf.run_model)(sliced_q, sliced_I, model[0], model[1])for model in model_list)
@@ -138,7 +168,9 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
     if len_prominence != 0:
         val_promenence = max(properties['prominences']) 
     
-    if len_prominence == 0 or val_promenence <  1.15:
+    if len_prominence == 0 or val_promenence <  1.15 or (len_prominence == 1 and val_promenence < 1.35): #TODO Convolutes logic!!! Needs fixing!
+        
+        #TODO add in FWHM contraint for lines!! (if fwhm > x and prom < y, then fit a line)
         
         if peak_name == 'Graphite-LiC12':
             b_slope = '-150, 0'
@@ -155,10 +187,10 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
             
             
         b_slope = b_slope.split(',')
-        model = make_linear_model(q_max, q_min, b_slope)
+        model = make_linear_model(q_max, q_min, b_slope, peak_name)
         best_model = pf.run_model(sliced_q, sliced_I, model[0], model[1])
         chisqr = best_model.chisqr
-        if chisqr <= 3 * chisqu_fit_value: 
+        if chisqr <= 2 * chisqu_fit_value: #was 3
             return best_model
     
     if peak_name == 'NMC-other' and len_prominence == 3:
@@ -241,7 +273,7 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
         
         elif peak_style == '5':
             b_slope = b_slope.split(',')
-            model = make_linear_model(q_max, q_min, b_slope)
+            model = make_linear_model(q_max, q_min, b_slope, peak_name)
             best_model = pf.run_model(sliced_q, sliced_I, model[0], model[1])
             #print(best_model.fit_report())
             #pf.plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
@@ -370,7 +402,7 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
         
         #need to iterate through just the centers 
         new_center_list = iterate_centers(center_list)
-        best_model = targeted_model(new_center_list, sig_list, amp_list, q_max, q_min, sliced_q, sliced_I, b_slope)
+        best_model = targeted_model(new_center_list, sig_list, amp_list, q_max, q_min, sliced_q, sliced_I, b_slope, peak_name)
             
         #best_model.plot()
         pf.plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)

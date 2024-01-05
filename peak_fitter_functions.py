@@ -11,21 +11,20 @@ import numpy as np
 import pandas as pd
 import os
 from matplotlib import pyplot as plt
-from scipy import optimize
-from scipy import integrate
-from scipy.signal import find_peaks
-from scipy.integrate import simpson
-from scipy.integrate import quad
-from pathlib import Path
-from os import listdir, chdir
-from os.path import isfile, join
+#from scipy import optimize
+#from scipy import integrate
+from scipy.signal import find_peaks, peak_widths
+from scipy.interpolate import interp1d
+#from pathlib import Path
+#from os import listdir, chdir
+#from os.path import isfile, join
 import regex as re
 from lmfit import Model
-from lmfit.models import LinearModel, GaussianModel, ExponentialModel, ConstantModel, PowerLawModel, PolynomialModel, LorentzianModel, VoigtModel
+from lmfit.models import LinearModel, GaussianModel, PolynomialModel, LorentzianModel, VoigtModel, PseudoVoigtModel
 from lmfit.model import save_modelresult, load_modelresult
-import math
-import time
-import itertools as it
+#import math
+#import time
+#import itertools as it
 from joblib import Parallel, delayed
 
 def make_dataframe(sample_name, data_path):
@@ -79,33 +78,80 @@ def get_xy_motor(sample_name, data_path, general_input_folder):
     return x_motor, y_motor
 
 
-def normalize_data(df):
+# def normalize_data(df):
     
-    #Pull the intensity of the copper (111) peaks
-    q_min = 2.95
-    q_max = 3.06
+#     #Pull the intensity of the copper (111) peaks
+#     q_min = 2.95
+#     q_max = 3.06
     
-    df_Cu = df[(df['q'] >= q_min) & (df['q'] <= q_max)]
-    max_intensity = df_Cu['I'].max()
+#     df_Cu = df[(df['q'] >= q_min) & (df['q'] <= q_max)]
+#     max_intensity = df_Cu['I'].max()
     
-    #The minumum intensity value is over the full data set 
-    min_intensity = df_Cu['I'].min()
+#     #The minumum intensity value is over the full data set 
+#     min_intensity = df_Cu['I'].min()
     
-    #df_norm = pd.DataFrame(columns = ['q','I'])
-    columns = ['q','I']
-    values = []
+#     #df_norm = pd.DataFrame(columns = ['q','I'])
+#     columns = ['q','I']
+#     values = []
     
-    for i in range(len(df)):
-        #calculate the normalized intensity 
-        #norm_intensity = (df['I'][i])
-        #print('Data is not being normalized, turn normalization back on')
-        norm_intensity = ((df['I'][i] - min_intensity) / (max_intensity - min_intensity))*1000        
+#     for i in range(len(df)):
+#         #calculate the normalized intensity 
+#         #norm_intensity = (df['I'][i])
+#         #print('Data is not being normalized, turn normalization back on')
+#         norm_intensity = ((df['I'][i] - min_intensity) / (max_intensity - min_intensity))*1000        
         
-        #append the q and new normalized intensity to a list 
-        values.append([df['q'][i], norm_intensity])
+#         #append the q and new normalized intensity to a list 
+#         values.append([df['q'][i], norm_intensity])
 
-    # Put the list of q and normalized intensities into a dataframe
-    df_norm = pd.DataFrame(values, columns=columns)
+#     # Put the list of q and normalized intensities into a dataframe
+#     df_norm = pd.DataFrame(values, columns=columns)
+    
+#     return df_norm
+
+
+def normalize_data(df, data_path, x_motor, y_motor):
+    
+    try:
+        #set the folder location to the meta-data 
+        os.chdir(data_path)
+        os.chdir('../')
+        new_path = os.getcwd()
+        file_list = os.listdir(os.path.join(new_path, 'scalar_data'))
+        
+        # Make a dataframe of the meta data
+        for file in file_list:
+            meta_data = open(os.path.join(new_path,'scalar_data', file))
+        
+        df_meta = pd.read_csv(meta_data)
+        #df = pd.DataFrame(meta_data)
+            
+        #The minumum and maxiumum detector counts for the data set 
+        min_detector_count = df_meta['pe2_stats1_total'].min()
+        max_detector_count = df_meta['pe2_stats1_total'].max()
+        
+        # Get the detector counts for the current x, y posistion
+        for i in range(len(df_meta)):
+            if df_meta['ss_stg2_y_user_setpoint'][i] == y_motor and df_meta['sample_x_user_setpoint'][i] == x_motor:
+                current_detector_count = df_meta['pe2_stats1_total'][i]
+        
+        #df_norm = pd.DataFrame(columns = ['q','I'])
+        columns = ['q','I']
+        values = []
+        
+        for i in range(len(df)):
+            #calculate a normalization factor
+            scale_factor = max_detector_count/ current_detector_count        
+            
+            #append the q and new normalized intensity to a list 
+            values.append([df['q'][i], df['I'][i] * scale_factor])
+    
+        print(scale_factor)
+        # Put the list of q and normalized intensities into a dataframe
+        df_norm = pd.DataFrame(values, columns=columns)
+        
+    except pd.errors.EmptyDataError:
+        print('Could not Normalize, scalar data likely missing from folder, returning original data!')
+        df_norm = df
     
     return df_norm
 
@@ -121,118 +167,117 @@ def get_points(df,q_min,q_max):
     return sliced_q, sliced_I
 
 
-def make_model(q_max, q_min, model_centers, sig, amp):
-    background = LinearModel(prefix=('b' + '_'))  
-    pars = background.make_params()
+def make_model(q_max, q_min, model_centers, sig_list, amp_list, peak_name):
+    if 'Graphite-LiC12' not in peak_name: 
+        background = LinearModel(prefix=('b' + '_'))  
+        pars = background.make_params()
+        
+        model = background
+        
+        # initial guesses     
+        slope1 = 0 
+        int1 = 50
+        
+        # For linear background
+        pars = background.make_params()
+        pars['b' + '_slope'].set(slope1)
+        pars['b' + '_intercept'].set(int1)
     
-    model = background
-    
-    # initial guesses     
-    slope1 = 0 
-    int1 = 50
-    
-    # For linear background
-    pars = background.make_params()
-    pars['b' + '_slope'].set(slope1)
-    pars['b' + '_intercept'].set(int1)
-    
-    
-    # background = PolynomialModel(prefix=('b' + '_'))
-    # pars = background.make_params()
-    
-    # model = background
-    
-    # # initial guesses     
-    # a = 1
-    # b = 1
-    # c = 1
-    # pars = background.make_params()
-    # pars['b' + '_c0'].set(a)
-    # pars['b' + '_c1'].set(b)
-    # pars['b' + '_c2'].set(b)
+    else: 
+        background = PolynomialModel(degree = 3, prefix=('b' + '_'))
+        pars = background.make_params()
+        
+        model = background
+        
+        # initial guesses     
+        a, b, c, d = 1, 1, 1, 1
+        pars = background.make_params()
+        pars['b' + '_c0'].set(value = a)
+        pars['b' + '_c1'].set(value = b)
+        pars['b' + '_c2'].set(value = c)
+        pars['b' + '_c3'].set(value = d)
     
       
-    for peak, center in enumerate(model_centers):
+    for index, center in enumerate(model_centers):
         # create prefex for each peak
-        pref = 'v'+str(peak)+'_'
-        #peak = GaussianModel(prefix=pref)
-        peak = VoigtModel(prefix=pref)
+        pref = 'v'+str(index)+'_'
+        peak = PseudoVoigtModel(prefix=pref)  #Use for a Pseudo Voigt Model
+        # peak = VoigtModel(prefix=pref) #Use for a Voigt Model
         # set the parimiters for each peak
         pars.update(peak.make_params())
         #pars[pref+'center'].set(value=center, min=q_min, max=q_max)
         pars[pref+'center'].set(value=center, min= center - 0.025, max= center + 0.025)
-        pars[pref+'sigma'].set(value=sig, max = sig * 5)
-        pars[pref+'amplitude'].set(amp, min = 0)
-        pars[pref+'gamma'].set(value=sig, vary=True, expr='', min = 0)
+        pars[pref+'sigma'].set(value=sig_list[index], max = sig_list[index] * 2) #reduce this guess after scipy fixes! (1.2 maybe?)
+        pars[pref+'amplitude'].set(value = amp_list[index], min = 0)
+        #pars[pref+'gamma'].set(value=sig, vary=True, expr='', min = 0) #Use for a Voigt Model
+        pars[pref+'fraction'].set(value=0.5, vary=True) #Use for a Pseudo Voigt Model
         
         model = model + peak
-
     return (model, pars)
 
-#Function get_model_list currently not used, this function creates a list of centers based on the q range rather than expected peaks with prominence
-def get_model_list(q_max, q_min, num_of_centers, num_peaks, sig, amp, peak_name, Li_q_max, Li_q_min, x_motor, y_motor):
-    # set some inital parimiters if its lithium we want to narrow the range it will guess for peaks
-    if peak_name == 'Li':
-        temp_max = q_max
-        temp_min = q_min
-        q_max = Li_q_max
-        q_min = Li_q_min
-    # generate a list of centers to try
-    increment = (q_max - q_min) / num_of_centers
-    n = 0
-    center_list = []
-    
-    while n <= num_of_centers:
-        center_list.append(n*increment + q_min)
-        n += 1
-    q_range = q_max - q_min
-    
-    if peak_name != 'Li':
-        center_list[0] = center_list[0] + .1 * q_range
-        # -1 refers to the last element in the list
-        center_list[-1] = center_list[-1] - .1 * q_range
-    
-    # creat unique combination of peak positions returns a list of tuples. 
-    # Tuples are samp length of num_peaks   
-    center_list = list(it.combinations(center_list, num_peaks))
-    
-    # if its lithium we now need to reset the q max/mmin so the model will look at the whole range
-    if peak_name == 'Li':
-        q_max = temp_max
-        q_min = temp_min
-    
-    # make a list of models for each center
-    model_list = []
-    if peak_name != 'Li':
-        for center in center_list:
-            model_list.append(make_model(q_max, q_min, center, sig, amp))
-    
-    return(model_list)  
 
-def guess_amp(prominence_list, width_list):
-    # guess the amplitude of the peaks based on the prominences and width
+def index_to_xdata(xdata, indices):
+    "interpolate the values from signal.peak_widths to xdata"
+    ind = np.arange(len(xdata))
+    f = interp1d(ind,xdata)
+    return f(indices)
+
+
+def make_initial_guesses(sliced_q, sliced_I):
+    peaks, properties = find_peaks(sliced_I, prominence = (1, None))
+    #print('prom:', properties['prominences'])
+    prom = properties['prominences']
+    
+    # Cacluate the width at half max of prominence
+    widths_half, width_heights_half, left_ips_half, right_ips_half = peak_widths(sliced_I, peaks, rel_height= 0.5)
+    
+    widths_half = index_to_xdata(sliced_q, widths_half)
+    left_ips_half = index_to_xdata(sliced_q, left_ips_half)
+    right_ips_half = index_to_xdata(sliced_q, right_ips_half)
+    
+    sig_list = []
+    for i in range(len(widths_half)):
+        width_guess = right_ips_half[i] - left_ips_half[i]
+        sig_guess = width_guess / 2.35 #Sigma is approximately sqrt(8*ln(2)) = 2.35
+        sig_list.append(sig_guess)
+        
+    print('Sigma guess: ', sig_list)
+    
+    
+    # Cacluate the width at the base
+    widths_base, width_heights_base, left_ips_base, right_ips_base = peak_widths(sliced_I, peaks, rel_height = 0.9)
+    
+    widths_base = index_to_xdata(sliced_q, widths_base)
+    left_ips_base = index_to_xdata(sliced_q, left_ips_base)
+    right_ips_base = index_to_xdata(sliced_q, right_ips_base)
+    
     amp_list = []
-    for p in prominence_list:
-        for w in width_list:
-            amp = 0.5*p*w
-            amp_list = amp_list.append(amp)
-    
-    return amp_list
+    #amplitude guess
+    for i in range(len(widths_base)):
+        width_guess = right_ips_base[i] - left_ips_base[i]
+        amp_guess = 0.5 * prom[i] * width_guess * 1.5 # added a 50% increase for fudge factor on triangle area, amplitude does not quite match up
+        amp_list.append(amp_guess)
+        
+    print('Amplitude guess: ', amp_list)
+
+    return sig_list, amp_list
     
 
-def get_prom_model_list(q_max, q_min, center_list, sig, amp, peak_name):
+def get_prom_model_list(q_max, q_min, center_list, sig, amp, peak_name, sliced_q, sliced_I):
     
     model_list = []
+    
+    sig_list, amp_list = make_initial_guesses(sliced_q, sliced_I)
     
     if peak_name == 'Li':
         for centers in range(len(center_list)):
             model_list.append(lpf.make_Li_model(q_max, q_min, center_list[centers], sig, amp))
-
+            #TODO Mkae sure to input lists for sig and amp and that these guesses are refined for Li!!! 
         return (model_list)
     # make a list of models for each center combination option
     
     for centers in range(len(center_list)):
-        model_list.append(make_model(q_max, q_min, center_list[centers], sig, amp))
+        model_list.append(make_model(q_max, q_min, center_list[centers], sig_list, amp_list, peak_name))
     
     return(model_list)  
 
@@ -248,7 +293,7 @@ def reduce_centers(center_dif, model_center_list, max_peak_allowed, q_max, q_min
     center = (float(model_center_list[1]) + float(model_center_list[0])) / 2
     center = [center]
     
-    (model, pars) = make_model(q_max, q_min, center, sig, amp)
+    (model, pars) = make_model(q_max, q_min, center, sig, amp, peak_name)
     
     best_model = run_model(sliced_q, sliced_I, model, pars)
     plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
@@ -264,6 +309,7 @@ def reduce_centers(center_dif, model_center_list, max_peak_allowed, q_max, q_min
     chisqr = best_model.chisqr
     
     return best_model
+
 
 def check_FWHM(sliced_q, best_model, peak_name):
     model_fwhm_list = []
@@ -296,59 +342,7 @@ def check_FWHM(sliced_q, best_model, peak_name):
     else:
         return False
         
-# def NMC_003_peak_conditions(prom, center_list, sig, amp, chisqu_fit_value):
-#     if len(center_list) > 1 and min(prom) < 2:
-#         index = int(np.where(prom == max(prom))[0])
-#         center_list = np.array([(center_list[index])]) #This needs to be the center list corresponding with max prom, not the max of the center list!!!
-#         prom = np.array([max(prom)])
-#         print('Reduced the centers!')
-#     if len(prom) > 0:
-#         print('Here are the prominences and center we are solving with: ', prom, center_list)
-#         if max(prom) > 350:
-#             print('BIG PEAK!')
-#             sig = 0.005
-#             amp = 30
-#             chisqu_fit_value = 10000
-#         elif max(prom) < 10:
-#             print('TINY PEAK!')
-#             sig = 0.005
-#             amp = 0.5
-#             chisqu_fit_value = 10
-#         elif 10 <= max(prom) <= 350:
-#             print('A peak was found!')
-#             sig = 0.005
-#             amp = 10
-#             chisqu_fit_value = 500
-
-#     return sig, amp, chisqu_fit_value, center_list
-
-# def NMC_other_peak_conditions(prom, center_list, sig, amp, chisqu_fit_value):
-#     if len(center_list) > 1 and min(prom) < 2:
-#         index = int(np.where(prom == max(prom))[0])
-#         center_list = np.array([(center_list[index])]) #This needs to be the center list corresponding with max prom, not the max of the center list!!!
-#         prom = np.array([max(prom)])
-#         print('Reduced the centers!')
-#     if len(prom) > 0:
-#         print('Here are the prominences and center we are solving with: ', prom, center_list)
-#         if max(prom) > 350:
-#             print('BIG PEAK!')
-#             sig = 0.005
-#             amp = 30
-#             chisqu_fit_value = 10000
-#         elif max(prom) < 10:
-#             print('TINY PEAK!')
-#             sig = 0.005
-#             amp = 0.5
-#             chisqu_fit_value = 10
-#         elif 10 <= max(prom) <= 350:
-#             print('A peak was found!')
-#             sig = 0.005
-#             amp = 10
-#             chisqu_fit_value = 500
-
-#    return sig, amp, chisqu_fit_value, center_list
-
-
+    
 def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_fit_value, Li_q_max, Li_q_min, x_motor, y_motor, peak_name, plot):
     chisqr = 1000000000
     initial_fit = False
@@ -367,9 +361,10 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
             return best_model
         
         # Get the peak center ('peak') and the prominences of the peak
-        peaks, properties = find_peaks(sliced_I, prominence = (1, None), width = (0,None))
+        peaks, properties = find_peaks(sliced_I, prominence = (1, None), width = (0,None)) 
+        #TODO Make sure this number for prominences actually works
         print('prom:', properties['prominences'])
-        print('width:', properties['widths'])
+        #print('width:', properties['widths'])
         prom = properties['prominences']
         
         
@@ -393,7 +388,7 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
         new_center_list = ufo.iterate_centers(new_center_list)
         
         # returns a list of tuples. first value is the model second value is the pars. This looks like this ((model, pars), (model, pars), ...)
-        model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name)
+        model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name, sliced_q, sliced_I)
         
         model_result_list = []
        
@@ -407,7 +402,7 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
         print('number of peaks found', num_peaks)
         
         if peak_name == 'NMC-other' and chisqu_fit_value == 1:
-            #Hit a 3 peak case where peaks sisn't fit well - define a new chi-squared value to solve and default to automated ufo 
+            #Hit a 3 peak case where peak isn't fit well - define a new chi-squared value to solve and default to automated ufo 
             chisqu_fit_value = 2000
             best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot)
             
@@ -470,7 +465,7 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
                         new_center_list.append(ufo.make_center_list(center_list[center], sig))
                     
                     new_center_list = ufo.iterate_centers(new_center_list)
-                    model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name)
+                    model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name, sliced_q, sliced_I)
                     model_result_list = Parallel(n_jobs=2)(delayed(run_model)(sliced_q, sliced_I, model[0], model[1])for model in model_list)
                     
                     results_sorted = sorted(model_result_list, key=lambda model: model.chisqr)
@@ -499,7 +494,7 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
                     center_list = np.take(sliced_q, peaks)
                     new_center_list = np.append(center_list, last_I)
                     new_center_list = [new_center_list]
-                    model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name)
+                    model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name, sliced_q, sliced_I)
                     model_result_list = Parallel(n_jobs=2)(delayed(run_model)(sliced_q, sliced_I, model[0], model[1])for model in model_list)
                     
                     results_sorted = sorted(model_result_list, key=lambda model: model.chisqr)
@@ -515,24 +510,10 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
         # While chi sdquared is too big, this will trigger the user fit on the next loop
         initial_fit = True
     
-    
+    # Resolve unconstrained solutions with too high FWHM
     fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name)
     if fwhm_too_big == True:
         best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot)    
-    
-    # Resolve unconstrained solutions with too high FWHM
-    # model_fwhm_list = []
-    
-    # #if center_reduced == False: 
-    # comps = best_model.eval_components(x=sliced_q)
-    # for prefex in comps.keys():
-    #     if prefex != 'b_':
-    #         model_fwhm_list.append(best_model.params[str(prefex)+'fwhm'].value)
-    
-    # if peak_name == 'Graphite-LiC12':
-    #     while max(model_fwhm_list) > 0.03: 
-    #         print('Max FWHM', max(model_fwhm_list))
-    #         print('FWHM too big')
             
         chisqr = best_model.chisqr
         print('Final chi squared: ' + str(chisqr))
@@ -600,12 +581,12 @@ def master_function(read_sample_file, num_of_centers,  data_path, q_min, q_max, 
     # Make a dataframe of the entire XRD pattern
     df = make_dataframe(read_sample_file, data_path)
     
-    # Normalize data
-    #df_norm = normalize_data(df)
-    df_norm = df
-    
     # Get xy_motor positions
     x_motor, y_motor = get_xy_motor(read_sample_file, data_path, general_input_folder)
+    
+    #TODO Normalize data
+    df_norm = normalize_data(df, data_path, x_motor, y_motor)
+    #df_norm = df
     
     # Slice the dataframe to desired q range
     sliced_q, sliced_I = get_points(df_norm, q_min, q_max)

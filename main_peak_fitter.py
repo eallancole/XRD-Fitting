@@ -19,7 +19,7 @@ from os import listdir, chdir
 from os.path import isfile, join
 import regex as re
 from lmfit import Model
-from lmfit.models import LinearModel, GaussianModel, ExponentialModel, ConstantModel, PowerLawModel, PolynomialModel, LorentzianModel, VoigtModel
+from lmfit.models import LinearModel, PolynomialModel, GaussianModel, VoigtModel, PseudoVoigtModel
 from lmfit.model import save_modelresult, load_modelresult
 import math
 import time
@@ -31,6 +31,7 @@ startTime = time.time()
 
 # Sample info
 sample_name = 'S1_LN_10psi_Ch10_0120922_map_02' #charged
+#sample_name = 'S1_LN_10psi_Ch10_0120922_map_01-4' #discharged
 
 plot = True
 restart_run = False
@@ -52,12 +53,14 @@ y_min, y_max = 0, 150
 #Setup dataframe 
 df_integrals = pd.DataFrame(columns=['Sample', 'file_name', 'x motor', 'y motor',  'Amplitude1', 'FWHM1', 'Center1',
                                      'Amplitude2', 'FWHM2', 'Center2', 'Amplitude3', 'FWHM3', 'Center3'])
+# TODO need to add in chi squared and look at how model feeds in
+
 # path to all the tiff files
 general_input_folder = r'D:\NSLS-II Winter 2023'
 #general_input_folder = r'D:\NSLS-II June 2023'
 input_folder = os.path.join(general_input_folder, sample_name, 'integration')
 
-general_output_folder = r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit'
+general_output_folder = r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing'
 #general_output_folder = r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Summer 2023\Initial_Data'
 output_folder = os.path.join(general_output_folder,  'Output',  sample_name)
 plot_folder = os.path.join(general_output_folder, 'Plot Output')
@@ -93,7 +96,7 @@ q_range_dict = {'Graphite-LiC12':[1.75, 1.9, 500, 0.005, 5]} #Stage 2, 3, 4
 list_of_files = [files for files in listdir(input_folder) if isfile(join(input_folder, files))]
 
 
-for element in q_range_dict.keys():
+for element in q_range_dict.keys(): # for each peak defined in q_rage_dict
     
     # part of the continue load feature do not comment me out. I'll cry.
     last_i = None
@@ -104,7 +107,7 @@ for element in q_range_dict.keys():
                                      'Amplitude2', 'FWHM2', 'Center2', 'Amplitude3', 'FWHM3', 'Center3', 'Model Path', 'i_value'])
     
       
-    # if resuming a run unncomment this and read in the file the old info is stored in.
+    # if resuming a run set restart run to True above.
     if restart_run == True:
         load_file = os.path.join(output_folder, (sample_name + '_' + element + '.csv'))
         df_integrals_temp = pd.read_csv(load_file)
@@ -130,22 +133,23 @@ for element in q_range_dict.keys():
         
     # loop through the list of files and append df_integrals --> Troubleshoot the peak fitting, getting weird numbers! 
     for i in range(last_i, len(list_of_files)):
-        
-
-        
+                
         # if i == 50:
         #     break
         #i = 150
+        #i_list =  [26, 28, 32, 66, 68, 70, 72, 74, 75, 78, 80, 124, 126, 128, 132, 134, 136]
+
+        # if i in i_list:
+
         if 'mean_q' in list_of_files[i]:
             print('i', i, '\n')
-            
             x, y = pf.get_xy_motor(list_of_files[i], input_folder, general_input_folder)
             if x >= x_min and x <= x_max:
                 if y >= y_min and y <= y_max:
             
                     #Call the master function to get the integral values for the specified peak
                     # returns [sample_name, x_motor, y_motor, integral_list, fwhm_list, peak_center_list, best_model]
-            
+                    
                     get_integrals = pf.master_function(list_of_files[i], num_of_centers, input_folder, q_min, q_max, 
                                                     sample_name, sig, amp, chisqu_fit_value, element, Li_q_max, Li_q_min, plot, general_input_folder)
                     
@@ -188,7 +192,7 @@ for element in q_range_dict.keys():
                     # slap our list of values in the dataframe!
                     df_integrals_temp.loc[max_row + 1] = info_list
                     #Add model path to daraframe to save path for fits later
-                   # df_integrals_temp['Model Path'].loc[max_row + 1] = savePath
+                    # df_integrals_temp['Model Path'].loc[max_row + 1] = savePath
         
                     df_integrals_temp.loc[max_row + 1, 'Model Path'] = savePath
                     # add the i value
@@ -199,18 +203,19 @@ for element in q_range_dict.keys():
                     
                     # after each fit is run save the data frame
                     # TODO find a way to move creation of file_name and output_file out of inner for loop.
-                    file_name = str(get_integrals[0] + '_' + element + '.csv')
+                    file_name = str(get_integrals[0] + '_' + element + 'test.csv')
                     output_file = os.path.join(output_folder, file_name)
                     df_integrals_temp.to_csv(output_file, index = False)
 
     # add data to the master data frame
+    
     if df_integrals.empty:
         df_integrals = df_integrals_temp
     else:
         df_integrals = pd.concat([df_integrals, df_integrals_temp])
 
 # save the master dataframe
-file_name = str(get_integrals[0]) + '_all_data.csv'
+file_name = str(get_integrals[0]) + '_all_data_test.csv'
 output_file = os.path.join(output_folder, file_name)
 df_integrals.to_csv(output_file)
 
