@@ -58,9 +58,9 @@ df_integrals = pd.DataFrame(columns=['Sample', 'file_name', 'x motor', 'y motor'
 # path to all the tiff files
 #general_input_folder = r'D:\NSLS-II Winter 2023'
 general_input_folder = 'test_files'
-input_folder =r"C:\Users\benk\Documents\GitHub\XRD-Fitting\test_files"# os.path.join(general_input_folder, sample_name, 'integration')
+input_folder =r"/Users/benkupernk/Documents/GitHub/XRD-Fitting/test_files"# os.path.join(general_input_folder, sample_name, 'integration')
 
-general_output_folder = r'C:\Users\benk\Documents\GitHub\XRD-Fitting'
+general_output_folder = r'/Users/benkupernk/Documents/GitHub'
 #general_output_folder = r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Summer 2023\Initial_Data'
 output_folder = os.path.join('.\\', general_output_folder,  'Output',  sample_name)
 plot_folder = os.path.join('.\\', general_output_folder, 'Plot Output')
@@ -94,7 +94,9 @@ q_range_dict = {'Graphite_LiC12':[1.75, 1.9, 500, 0.005, 5]} #Stage 2, 3, 4
 
 # Make a list of all files names in folder
 list_of_files = [files for files in listdir(input_folder) if isfile(join(input_folder, files))]
-print(list_of_files)
+
+# if a fit can't be automaticly found the user fit will be called if this is true
+call_user_fit = False
 
 for element_name, element_values in q_range_dict.items(): # for each peak defined in q_rage_dict
 
@@ -144,11 +146,11 @@ for element_name, element_values in q_range_dict.items(): # for each peak define
         #     break
         #i = 150
         # 
-        #i_list = [74]# [26, 28, 32, 66, 68,70,  72, 74, 75, 78, 80]
-        if True: #i in i_list:
+        i_list = [2]# [26, 28, 32, 66, 68,70,  72, 74, 75, 78, 80]
+        if True:#i in i_list:
 
             if 'mean_q' in list_of_files[i]:
-                print('i', i, '\n')
+                #print('i', i, '\n')
                 
                 x, y = pf.get_xy_motor(list_of_files[i], input_folder, general_input_folder)
                 if x >= x_min and x <= x_max:
@@ -160,7 +162,7 @@ for element_name, element_values in q_range_dict.items(): # for each peak define
                         get_integrals = pf.master_function(i, list_of_files[i],
                                                            num_of_centers, input_folder, general_peak.q_min, general_peak.q_max, 
                                                            sample_name, general_peak.sigma, general_peak.amplitude, general_peak.chi_squared , element_name,
-                                                           Li_q_max, Li_q_min, plot, general_input_folder, general_peak)
+                                                           Li_q_max, Li_q_min, plot, general_input_folder, general_peak, call_user_fit)
                         
                         
                         # save the plots for the best fit if you want
