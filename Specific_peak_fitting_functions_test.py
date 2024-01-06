@@ -4,7 +4,7 @@ Created on Mon May 15 20:16:28 2023
 
 @author: Elizabeth Allan-Cole
 """
-import peak_fitter_functions as pf
+import peak_fitter_functions_test as pf
 import numpy as np
 from lmfit import Model
 from lmfit.models import LinearModel, GaussianModel, PolynomialModel, LorentzianModel, VoigtModel, PseudoVoigtModel

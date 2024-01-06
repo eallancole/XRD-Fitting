@@ -5,7 +5,7 @@ Created on Tue Apr 25 12:43:40 2023
 @author: Elizabeth Allan-Cole
 """
 
-import peak_fitter_functions as pf
+import peak_fitter_functions_test as pf
 from matplotlib import pyplot as plt
 from lmfit import Model
 from lmfit.models import LinearModel, GaussianModel, ExponentialModel, ConstantModel, PowerLawModel, PolynomialModel, LorentzianModel, VoigtModel

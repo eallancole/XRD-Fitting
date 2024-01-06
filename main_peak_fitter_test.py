@@ -4,7 +4,7 @@ Created on Fri Mar 24 10:43:36 2023
 
 @author: Elizabeth Allan-Cole
 """
-import peak_fitter_functions as pf
+import peak_fitter_functions_test as pf
 import numpy as np
 import pandas as pd
 import os
@@ -24,14 +24,15 @@ from lmfit.model import save_modelresult, load_modelresult
 import math
 import time
 import itertools as it
-from abstract_peak_classes import *
+from abstract_peak_classes_test import *
 
 
 
 startTime = time.time()
 
 # Sample info
-sample_name = 'S1_LN_10psi_Ch10_0120922_map_02' #charged
+sample_name = 'S1_LN_10psi_Ch10_0120922_map_02' #discharged
+#sample_name = 'S1_LN_10psi_Ch10_0120922_map_01-4' #charged
 
 plot = True
 restart_run = False
@@ -95,6 +96,8 @@ q_range_dict = {'Graphite_LiC12':[1.75, 1.9, 500, 0.005, 5]} #Stage 2, 3, 4
 # Make a list of all files names in folder
 list_of_files = [files for files in listdir(input_folder) if isfile(join(input_folder, files))]
 
+# if a fit can't be automaticly found the user fit will be called if this is true
+call_user_fit = True
 
 for element_name, element_values in q_range_dict.items(): # for each peak defined in q_rage_dict
 
@@ -144,11 +147,13 @@ for element_name, element_values in q_range_dict.items(): # for each peak define
         #     break
         #i = 150
         # 
-        i_list = [74]# [26, 28, 32, 66, 68,70,  72, 74, 75, 78, 80]
-        if i in i_list:
+        i_list = [26, 28, 32, 66, 68,70,  72, 74, 75, 78, 80] #Sample = S1_LN_10psi_Ch10_0120922_map_02
+        #i_list = 
+        #i_list = [72, 302, 308] #Sample = S1_LN_10psi_Ch10_0120922_map_01-4
+        if i > 181: #i in i_list:
 
             if 'mean_q' in list_of_files[i]:
-                print('i', i, '\n')
+                print('i: ', i, '\n')
                 
                 x, y = pf.get_xy_motor(list_of_files[i], input_folder, general_input_folder)
                 if x >= x_min and x <= x_max:
@@ -160,7 +165,7 @@ for element_name, element_values in q_range_dict.items(): # for each peak define
                         get_integrals = pf.master_function(i, list_of_files[i],
                                                            num_of_centers, input_folder, general_peak.q_min, general_peak.q_max, 
                                                            sample_name, general_peak.sigma, general_peak.amplitude, general_peak.chi_squared , element_name,
-                                                           Li_q_max, Li_q_min, plot, general_input_folder, general_peak)
+                                                           Li_q_max, Li_q_min, plot, general_input_folder, general_peak, call_user_fit)
                         
                         
                         # save the plots for the best fit if you want
@@ -168,7 +173,7 @@ for element_name, element_values in q_range_dict.items(): # for each peak define
                         
                         
                         # this just prints the number of files we've cronked through
-                        print(n)
+                        #print(n)
                         n += 1
                         
                         # zips the integral_list, fwhm_list, peak_center_list together to make a list of lists
