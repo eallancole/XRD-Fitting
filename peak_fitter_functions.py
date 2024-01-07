@@ -26,6 +26,7 @@ from lmfit.model import save_modelresult, load_modelresult
 #import time
 #import itertools as it
 from joblib import Parallel, delayed
+import xlsxwriter as xl
 
 def make_dataframe(sample_name, data_path):
 
@@ -255,7 +256,7 @@ def make_initial_guesses(sliced_q, sliced_I):
     #amplitude guess
     for i in range(len(widths_base)):
         width_guess = right_ips_base[i] - left_ips_base[i]
-        amp_guess = 0.5 * prom[i] * width_guess * 1.5 # added a 50% increase for fudge factor on triangle area, amplitude does not quite match up
+        amp_guess = 0.5 * prom[i] * width_guess # consider adding a 50% increase for fudge factor on triangle area, amplitude does not quite match up
         amp_list.append(amp_guess)
         
     print('Amplitude guess: ', amp_list)
@@ -303,7 +304,7 @@ def reduce_centers(center_dif, model_center_list, max_peak_allowed, q_max, q_min
     print('Reduced the number of peaks, new chi sqrd: ' + str(chisqr))
     
     if chisqr > 2.5 * chisqu_fit_value:
-        best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot)
+        best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
         plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
     
     chisqr = best_model.chisqr
@@ -343,10 +344,11 @@ def check_FWHM(sliced_q, best_model, peak_name):
         return False
         
     
-def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_fit_value, Li_q_max, Li_q_min, x_motor, y_motor, peak_name, plot):
+def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_fit_value, Li_q_max, Li_q_min, x_motor, y_motor, peak_name, plot, run_mode):
     chisqr = 1000000000
     initial_fit = False
     fwhm_too_big = False
+    good_fit = True
     
     while chisqr >= chisqu_fit_value:
 
@@ -354,11 +356,11 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
         if initial_fit == True:
             #print('Still Tomato???: ', sig, amp, chisqu_fit_value, center_list)
             #print("TURN THE USER FIT BACK ON")
-            best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot)
+            best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
             
             chisqr = best_model.chisqr
             print('Final chi squared: ' + str(chisqr))    
-            return best_model
+            return best_model, good_fit
         
         # Get the peak center ('peak') and the prominences of the peak
         peaks, properties = find_peaks(sliced_I, prominence = (1, None), width = (0,None)) 
@@ -404,7 +406,7 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
         if peak_name == 'NMC-other' and chisqu_fit_value == 1:
             #Hit a 3 peak case where peak isn't fit well - define a new chi-squared value to solve and default to automated ufo 
             chisqu_fit_value = 2000
-            best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot)
+            best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
             
         
         # If there are no peaks use prominemce to detemine and return a line
@@ -414,12 +416,12 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
                 val_promenence = max(properties['prominences']) 
     
             if len_prominence == 0 or val_promenence < 1.15: #Previous value 1.15
-                best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot)
+                best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
                 chisqr = best_model.chisqr
                 print('Final chi squared: ' + str(chisqr))
                 plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
 
-                return best_model
+                return best_model, good_fit
         
         # get centers from the best model
         # if the centers are too close together, the model likely miss fit 1 peak as 2
@@ -441,13 +443,13 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
                         #Check FWHM of peak 
                         fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name)
                         if fwhm_too_big == True:
-                            best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot)
+                            best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
                             
                         plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
                         chisqr = best_model.chisqr
                         print('Final chi squared: ' + str(chisqr))
                         
-                        return best_model
+                        return best_model, good_fit
         
         # There is a broad polymer peak overlapping with the LiC6 peak that we need to de-convolute
         # This will increase the centers guesses to find the LiC6 peak
@@ -464,8 +466,8 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
                     for center in range(len(center_list)):
                         new_center_list.append(ufo.make_center_list(center_list[center], sig))
                     
-                    new_center_list = ufo.iterate_centers(new_center_list)
-                    model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name, sliced_q, sliced_I)
+                    #new_center_list = ufo.iterate_centers(new_center_list)
+                    model_list = get_prom_model_list(q_max, q_min, center_list, sig, amp, peak_name, sliced_q, sliced_I)
                     model_result_list = Parallel(n_jobs=2)(delayed(run_model)(sliced_q, sliced_I, model[0], model[1])for model in model_list)
                     
                     results_sorted = sorted(model_result_list, key=lambda model: model.chisqr)
@@ -475,13 +477,13 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
                     
                     fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name)
                     if fwhm_too_big == True:
-                        best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot) 
+                        best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode) 
                         print('Final chi squared: ' + str(chisqr))
-                        return best_model
+                        return best_model, good_fit
                     
                     if chisqr <= chisqu_fit_value:
                         print('Final chi squared: ' + str(chisqr))
-                        return best_model
+                        return best_model, good_fit
                     
         # If peak name is Li we need to call Li fitting fucntions to fit the voigt NMC peak
         if peak_name =='Li':
@@ -504,7 +506,7 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
                     if chisqr <= chisqu_fit_value:
                         plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
                         print('Final chi squared: ' + str(chisqr))
-                        return best_model
+                        return best_model, good_fit
         
         
         # While chi sdquared is too big, this will trigger the user fit on the next loop
@@ -513,13 +515,13 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
     # Resolve unconstrained solutions with too high FWHM
     fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name)
     if fwhm_too_big == True:
-        best_model = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot)    
+        best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)    
             
         chisqr = best_model.chisqr
         print('Final chi squared: ' + str(chisqr))
         plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
                 
-        return best_model
+        return best_model, good_fit
     
     plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
     chisqr = best_model.chisqr
@@ -527,7 +529,7 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
     #print('\n\nFinal Fit Report: \n\n', best_model.fit_report())
     print('Final chi squared: ' + str(chisqr))
     
-    return best_model
+    return best_model, good_fit
 
 
 def get_values(best_model, sliced_q, sliced_I):
@@ -576,7 +578,7 @@ def plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot
             plt.pause(1)
 
 
-def master_function(read_sample_file, num_of_centers,  data_path, q_min, q_max,  sample_name, sig, amp, chisqu_fit_value, peak_name, Li_q_max, Li_q_min, plot, general_input_folder):
+def master_function(read_sample_file, num_of_centers,  data_path, q_min, q_max,  sample_name, sig, amp, chisqu_fit_value, peak_name, Li_q_max, Li_q_min, plot, general_input_folder, run_mode):
     
     # Make a dataframe of the entire XRD pattern
     df = make_dataframe(read_sample_file, data_path)
@@ -592,15 +594,15 @@ def master_function(read_sample_file, num_of_centers,  data_path, q_min, q_max, 
     sliced_q, sliced_I = get_points(df_norm, q_min, q_max)
 
     # get the best fit for the data
-    best_model = fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_fit_value, Li_q_max, Li_q_min, x_motor, y_motor, peak_name, plot)
-    print('Final fit report: \n', best_model.fit_report())
+    best_model, good_fit = fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_fit_value, Li_q_max, Li_q_min, x_motor, y_motor, peak_name, plot, run_mode)
+    #print('Final fit report: \n', best_model.fit_report())
     
     if best_model is not None:
         integral_list, fwhm_list, peak_center_list = get_values(best_model, sliced_q, sliced_I)
     else:
         return sample_name, x_motor, y_motor
     
-    return [sample_name, x_motor, y_motor, integral_list, fwhm_list, peak_center_list, best_model, sliced_q]
+    return [sample_name, x_motor, y_motor, integral_list, fwhm_list, peak_center_list, best_model, sliced_q, sliced_I, good_fit]
 
 
 def save_fits(savePath_gen, get_integrals, element, list_of_files, i, sample_name):
@@ -629,7 +631,46 @@ def save_fits(savePath_gen, get_integrals, element, list_of_files, i, sample_nam
     os.chdir(savePath)
     best_model = get_integrals[6]
     save_modelresult(best_model, sample_name)
+    
+    # now save the more etaled graph
+    
+    comps = get_integrals[6].eval_components(x=get_integrals[7])
+    
+    fig, ax = plt.subplots(1,1, figsize=(7,7))
+    
+    ax.scatter(get_integrals[7],get_integrals[8], label='Data', color='black')  
+    ax.plot(get_integrals[7],best_model.best_fit, label='Model', color='gold')
+    for prefix in comps.keys():
+        ax.plot(get_integrals[7], comps[prefix], '--', label=str(prefix))
+
+    ax.set_title(str(element) + ' : (' + str(get_integrals[1]) + ',' + str(get_integrals[2]) + ')') 
+    ax.set_xlabel('q [1/A]')
+    ax.set_ylabel('I [au.]')
+    ax.legend()
+    plt.savefig(fig_path + '_detailed')
+    # keeps the plot from being displayed
+    plt.close(fig)
         
     return savePath
 
     
+
+def write_data_with_graph(output_file, df_integrals_temp):
+    
+    workbook = xl.Workbook(output_file, {"nan_inf_to_errors": True})
+    worksheet = workbook.add_worksheet()
+    worksheet.set_default_row(240)
+    worksheet.set_column(0, 0, 50)
+    worksheet.set_row(0, 20)
+    
+    picture_file_paths = list(df_integrals_temp.Plot)
+    #add the column names
+    worksheet.write_row("A1", df_integrals_temp.columns)
+    [worksheet.insert_image("A"+str(row + 2), filepath, {"x_scale": 0.5, "y_scale": 0.5}) for row, filepath in enumerate(picture_file_paths)]
+    #[worksheet.write_row("A"+str(row + 2), df_integrals_temp.loc[row, :].values.tolist()) for row in range(df_integrals_temp.shape[0])]
+    for row in range(df_integrals_temp.shape[0]):
+        cell = "A"+str(row + 2)
+        data = df_integrals_temp.loc[row, :].values.tolist()
+        worksheet.write_row(cell, data)
+    workbook.close()
+

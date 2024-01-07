@@ -151,7 +151,7 @@ def targeted_model(new_center_list, sig_list, amp_list, q_max, q_min, sliced_q, 
     
 
 
-def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot):
+def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode):
     print('Chi square aim: ', chisqu_fit_value)
     good = 'n'
     print("\n\nfit not found")
@@ -191,12 +191,16 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
         best_model = pf.run_model(sliced_q, sliced_I, model[0], model[1])
         chisqr = best_model.chisqr
         if chisqr <= 2 * chisqu_fit_value: #was 3
-            return best_model
+            return best_model, good_fit
     
     if peak_name == 'NMC-other' and len_prominence == 3:
         peak_style = '10'
     
     else: 
+        if run_mode == True:
+            good_fit = False
+            return best_model, good_fit
+        
         print('\nPeak class options: "y"- GoodFit , "1"-BigSmall, "2"-SmallBig,"3"-OneBig, "4"-OneSmall , "5"-Line, "6"-TwoSmall ,"7"-TwoTogether , "8"-Li-NMC,"9"-NMC-no-Li ,"10"-3peak,"n"- other \n')
         peak_style = input('Is the fit good? If yes enter "y", otherwise enter peak class to fit. \n')
 
@@ -278,7 +282,7 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
             #print(best_model.fit_report())
             #pf.plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
 
-            return best_model
+            return best_model, good_fit
         
         elif peak_style == '6':
             
@@ -413,10 +417,13 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
         if best_model.chisqr <= chisqu_fit_value * 2: # change back to 2
             peak_style = 'y'
         else: 
-            peak_style = input('enter "y" to continue. \nTo try again enter "n" to input paramters manually or enter peak class # from above.\n')
+            peak_style = input('enter "y" to continue. \nTo try again enter "n" to input paramters manually or enter peak class # from above.\nIf fit is bad and you want to revist later enter "b" for bad fit. \n')
+            if peak_style == 'b':
+                good_fit = False
+                print('Fit quality labeled as bad fit (good_fit = False) So this can be refit later. ')
         
         # except:
         #      print('operation filed with the following messege')
         #      print('Note for Ben. Add function so this prints error message. Also Hope your science is going well!')
     
-    return best_model
+    return best_model, good_fit
