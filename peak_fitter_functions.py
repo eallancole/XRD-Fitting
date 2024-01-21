@@ -53,6 +53,19 @@ def get_xy_motor(sample_name, data_path, general_input_folder):
             end_y = re.search('mm_sample_x', sample_name).start()
             y_motor = sample_name[start_y:end_y].replace(',', '.')
             y_motor = float(y_motor)
+            
+        elif 'Back' in general_input_folder:
+            # Find the x_motor position in the file title using Regex
+            start_x = re.search('_x_', sample_name).end()
+            end_x = re.search('mm_primary', sample_name).start() 
+            x_motor = sample_name[start_x:end_x].replace(',', '.')
+            x_motor = float(x_motor)
+    
+            # Find the y_motor position in the file title using Regex
+            start_y = re.search('_y_', sample_name).end()
+            end_y = re.search('mm_sample_x', sample_name).start()
+            y_motor = sample_name[start_y:end_y].replace(',', '.')
+            y_motor = float(y_motor)
         
         else:
             # Find the x_motor position in the file title using Regex
@@ -132,8 +145,13 @@ def normalize_data(df, data_path, x_motor, y_motor):
         
         # Get the detector counts for the current x, y posistion
         for i in range(len(df_meta)):
-            if df_meta['ss_stg2_y_user_setpoint'][i] == y_motor and df_meta['sample_x_user_setpoint'][i] == x_motor:
-                current_detector_count = df_meta['pe2_stats1_total'][i]
+            try: 
+                if df_meta['ss_stg2_y_user_setpoint'][i] == y_motor and df_meta['sample_x_user_setpoint'][i] == x_motor:
+                    current_detector_count = df_meta['pe2_stats1_total'][i]
+                
+            except KeyError: 
+                if df_meta['sample_y_user_setpoint'][i] == y_motor and df_meta['sample_x_user_setpoint'][i] == x_motor:
+                    current_detector_count = df_meta['pe2_stats1_total'][i]
         
         #df_norm = pd.DataFrame(columns = ['q','I'])
         columns = ['q','I']
@@ -146,7 +164,7 @@ def normalize_data(df, data_path, x_motor, y_motor):
             #append the q and new normalized intensity to a list 
             values.append([df['q'][i], df['I'][i] * scale_factor])
     
-        print(scale_factor)
+        #print(scale_factor)
         # Put the list of q and normalized intensities into a dataframe
         df_norm = pd.DataFrame(values, columns=columns)
         
@@ -168,7 +186,7 @@ def get_points(df,q_min,q_max):
     return sliced_q, sliced_I
 
 
-def make_model(q_max, q_min, model_centers, sig_list, amp_list, peak_name):
+def make_model(q_max, q_min, model_centers, sig_list, amp_list, peak_name, overlap):
     if 'Graphite-LiC12' not in peak_name: 
         background = LinearModel(prefix=('b' + '_'))  
         pars = background.make_params()
@@ -191,14 +209,19 @@ def make_model(q_max, q_min, model_centers, sig_list, amp_list, peak_name):
         model = background
         
         # initial guesses     
-        a, b, c, d = 1, 1, 1, 1
+        a, b, c, d = 20000, -40000, 20000, -5000
         pars = background.make_params()
-        pars['b' + '_c0'].set(value = a)
-        pars['b' + '_c1'].set(value = b)
-        pars['b' + '_c2'].set(value = c)
-        pars['b' + '_c3'].set(value = d)
+        # if overlap == True:
+        #     max_min_list = [40000, 0, -60000, 0, 40000, 0, -10000, 0]
+        # else: 
+        #max_min_list = [None, None, None, None]
+            
+        pars['b' + '_c0'].set(value = a) #, max = max_min_list[0], min = max_min_list[1])
+        pars['b' + '_c1'].set(value = b) #, min = max_min_list[2], max = max_min_list[3])
+        pars['b' + '_c2'].set(value = c) #, max = max_min_list[4], min = max_min_list[5])
+        pars['b' + '_c3'].set(value = d) #, min = max_min_list[6], max = max_min_list[7])
     
-      
+
     for index, center in enumerate(model_centers):
         # create prefex for each peak
         pref = 'v'+str(index)+'_'
@@ -206,16 +229,46 @@ def make_model(q_max, q_min, model_centers, sig_list, amp_list, peak_name):
         # peak = VoigtModel(prefix=pref) #Use for a Voigt Model
         # set the parimiters for each peak
         pars.update(peak.make_params())
-        #pars[pref+'center'].set(value=center, min=q_min, max=q_max)
-        pars[pref+'center'].set(value=center, min= center - 0.025, max= center + 0.025)
-        pars[pref+'sigma'].set(value=sig_list[index], max = sig_list[index] * 2) #reduce this guess after scipy fixes! (1.2 maybe?)
-        pars[pref+'amplitude'].set(value = amp_list[index], min = 0)
+        pars[pref+'center'].set(value=center, min= center - 0.01, max= center + 0.01)    
+        pars[pref+'sigma'].set(value=sig_list[index], max = sig_list[index] * 1.25) #reduce this guess after scipy fixes! 
+        pars[pref+'amplitude'].set(amp_list[index], min = 0, max = amp_list[index] * 2) #THIS IS APPARENTLY THE AREA
         #pars[pref+'gamma'].set(value=sig, vary=True, expr='', min = 0) #Use for a Voigt Model
         pars[pref+'fraction'].set(value=0.5, vary=True) #Use for a Pseudo Voigt Model
         
         model = model + peak
     return (model, pars)
 
+
+def make_background_model(q_max, q_min, b_slope, peak_name):
+    if 'Graphite-LiC12' in peak_name: 
+        background = PolynomialModel(degree = 3, prefix=('b' + '_'))
+        pars = background.make_params()
+        
+        model = background
+        
+        # initial guesses     
+        a, b, c, d = 1, 1, 1, 1
+        pars = background.make_params()
+        pars['b' + '_c0'].set(value = a)
+        pars['b' + '_c1'].set(value = b)
+        pars['b' + '_c2'].set(value = c)
+        pars['b' + '_c3'].set(value = d)
+    else: 
+        background = LinearModel(prefix=('b' + '_'))  
+        pars = background.make_params()
+        
+        model = background
+        
+        # initial guesses     
+        slope1 = (float(b_slope[0]) + float(b_slope[1]))/2
+        int1 = 50
+        
+        # For linear background
+        pars = background.make_params()
+        pars['b' + '_slope'].set(slope1, vary = True, min = float(b_slope[0]), max = float(b_slope[1]))
+        pars['b' + '_intercept'].set(int1, vary = True)
+    
+    return (model, pars)
 
 def index_to_xdata(xdata, indices):
     "interpolate the values from signal.peak_widths to xdata"
@@ -225,10 +278,11 @@ def index_to_xdata(xdata, indices):
 
 
 def make_initial_guesses(sliced_q, sliced_I):
-    peaks, properties = find_peaks(sliced_I, prominence = (1, None))
+    peaks, properties = find_peaks(sliced_I, prominence = (1, None), height = (1, None))
     #print('prom:', properties['prominences'])
     prom = properties['prominences']
-    
+    center_list = np.take(sliced_q, peaks)
+
     # Cacluate the width at half max of prominence
     widths_half, width_heights_half, left_ips_half, right_ips_half = peak_widths(sliced_I, peaks, rel_height= 0.5)
     
@@ -236,14 +290,16 @@ def make_initial_guesses(sliced_q, sliced_I):
     left_ips_half = index_to_xdata(sliced_q, left_ips_half)
     right_ips_half = index_to_xdata(sliced_q, right_ips_half)
     
+    
     sig_list = []
+    fwhm_guess_list = []
     for i in range(len(widths_half)):
         width_guess = right_ips_half[i] - left_ips_half[i]
         sig_guess = width_guess / 2.35 #Sigma is approximately sqrt(8*ln(2)) = 2.35
         sig_list.append(sig_guess)
+        fwhm_guess_list.append(width_guess)
         
-    print('Sigma guess: ', sig_list)
-    
+    #print('Sigma guess: ', sig_list)
     
     # Cacluate the width at the base
     widths_base, width_heights_base, left_ips_base, right_ips_base = peak_widths(sliced_I, peaks, rel_height = 0.9)
@@ -259,86 +315,101 @@ def make_initial_guesses(sliced_q, sliced_I):
         amp_guess = 0.5 * prom[i] * width_guess # consider adding a 50% increase for fudge factor on triangle area, amplitude does not quite match up
         amp_list.append(amp_guess)
         
-    print('Amplitude guess: ', amp_list)
+    #print('Amplitude guess: ', amp_list)
+    
+    #height_list = properties['peak_heights']
+    height_list = properties['peak_heights']
 
-    return sig_list, amp_list
+    return prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, height_list
     
 
-def get_prom_model_list(q_max, q_min, center_list, sig, amp, peak_name, sliced_q, sliced_I):
-    
+def get_prom_model_list(q_max, q_min, peak_name, sliced_q, sliced_I, chisqu_fit_value):
     model_list = []
     
-    sig_list, amp_list = make_initial_guesses(sliced_q, sliced_I)
+    prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, height_list = make_initial_guesses(sliced_q, sliced_I)
+    overlap = False
     
-    if peak_name == 'Li':
-        for centers in range(len(center_list)):
-            model_list.append(lpf.make_Li_model(q_max, q_min, center_list[centers], sig, amp))
-            #TODO Mkae sure to input lists for sig and amp and that these guesses are refined for Li!!! 
-        return (model_list)
+    if peak_name == 'Graphite-LiC12':
+    # Correct peaks peak overlap in one peak
+        prom, amp_list, sig_list, overlap = lpf.fix_overlap_peaks(prom, center_list, amp_list, sig_list, height_list)
+    
+        if overlap == False: 
+            # Peak slopes to find peaks together and only one peak was identified (no 2nd prominence found)
+            center_list, amp_list, sig_list, prom, overlap = lpf.check_peak_slopes_test(left_ips_base, right_ips_base, prom, center_list, amp_list, sig_list, overlap)    
+        
+        if len(center_list) >= 3:
+            center_list, amp_list, sig_list = lpf.Graphite_3_or_4_peaks(center_list, amp_list, sig_list)
+    
+    if peak_name == 'NMC-003': 
+        sig_list, amp_list, chisqu_fit_value, center_list = lpf.NMC_003_peak_conditions(prom, center_list, sig_list, amp_list, chisqu_fit_value)
+    
+    if peak_name == 'NMC-other': 
+        sig_list, amp_list, chisqu_fit_value, center_list = lpf.NMC_other_peak_conditions(prom, center_list, sig_list, amp_list, chisqu_fit_value)
+    
+    if peak_name == 'LiC6':
+        center_list, amp_list, sig_list, chisqu_fit_value = lpf.LiC6_conditions(center_list, amp_list, sig_list, chisqu_fit_value)
+    # if peak_name == 'Li':
+    #     for i in range(len(center_list)):
+    #         model_list.append(lpf.make_Li_model(q_max, q_min, center_list[i], sig_list[i], amp_list[i], peak_name))
+    #         #TODO Mkae sure to input lists for sig and amp and that these guesses are refined for Li!!! 
+    #     return (model_list)
+    
     # make a list of models for each center combination option
+    model, pars = make_model(q_max, q_min, center_list, sig_list, amp_list, peak_name, overlap)
+    model_list = (model, pars)
     
-    for centers in range(len(center_list)):
-        model_list.append(make_model(q_max, q_min, center_list[centers], sig_list, amp_list, peak_name))
-    
-    return(model_list)  
+    return model_list, prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, overlap, chisqu_fit_value
 
+def background_parameters(peak_name, q_max, q_min): 
+        if peak_name == 'Graphite-LiC12':
+            b_slope = '-150, 0'
+        elif peak_name == 'LiC6':
+            b_slope = '-450, -20'
+        elif peak_name == 'Li':
+            b_slope = '0, 150'
+        elif peak_name == 'NMC-003':
+            b_slope = '0, 650'
+        elif peak_name == 'NMC-other':
+            b_slope = '0, 250'
+        else: 
+            print('------------IF YOU GET THIS MESSAGE, MAKE SURE THE BACKGROUND FUNCTION DID NOT BLOW UP -> BOOM ------------')
+            b_slope = '-inf, inf'    
+    
+        b_slope = b_slope.split(',')
+        background_model, pars = make_background_model(q_max, q_min, b_slope, peak_name)
+        return (background_model, pars)
 
 def run_model(sliced_q, sliced_I, model, pars):
     model_result = model.fit(sliced_I, pars, x = sliced_q, nan_policy = 'omit')
     return(model_result)
 
-                      
-def reduce_centers(center_dif, model_center_list, max_peak_allowed, q_max, q_min, sig, amp, sliced_q, sliced_I, x_motor, y_motor, peak_name, chisqu_fit_value, plot):
-    
-    max_peak_allowed = max_peak_allowed - 1
-    center = (float(model_center_list[1]) + float(model_center_list[0])) / 2
-    center = [center]
-    
-    (model, pars) = make_model(q_max, q_min, center, sig, amp, peak_name)
-    
-    best_model = run_model(sliced_q, sliced_I, model, pars)
-    plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
-    
-    chisqr = best_model.chisqr
-    
-    print('Reduced the number of peaks, new chi sqrd: ' + str(chisqr))
-    
-    if chisqr > 2.5 * chisqu_fit_value:
-        best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
-        plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
-    
-    chisqr = best_model.chisqr
-    
-    return best_model
 
-
-def check_FWHM(sliced_q, best_model, peak_name):
+def check_FWHM(sliced_q, best_model, peak_name, overlap):
     model_fwhm_list = []
     comps = best_model.eval_components(x=sliced_q)
     
-    for prefex in comps.keys():
-        if prefex != 'b_':
-            model_fwhm_list.append(best_model.params[str(prefex)+'fwhm'].value)
-    
-    print('fwhm list: ', model_fwhm_list)
-    
-    if peak_name == 'Graphite-LiC12':
-        while max(model_fwhm_list) > 0.03: 
-            print('FWHM too big')
-            
-            return True
+    if overlap == False:
+        for prefex in comps.keys():
+            if prefex != 'b_':
+                model_fwhm_list.append(best_model.params[str(prefex)+'fwhm'].value)
         
-    if peak_name == 'LiC6':
-        #If multiple borad peaks appear in the fit, go to user fit
-        max_fwhm = 0.03
-        if len(list(filter(lambda x: x >= max_fwhm, model_fwhm_list))) >= 2:
-            print('potato')
-            return True
-        
-        while max(model_fwhm_list) > 0.075: 
+        if peak_name == 'Graphite-LiC12':
+            while max(model_fwhm_list) > 0.03: 
+                print('FWHM too big')
+                
+                return True
             
-            print('FWHM too big')
-            return True
+        if peak_name == 'LiC6':
+            #If multiple borad peaks appear in the fit, go to user fit
+            max_fwhm = 0.03
+            if len(list(filter(lambda x: x >= max_fwhm, model_fwhm_list))) >= 2:
+                print('potato')
+                return True
+            
+            while max(model_fwhm_list) > 0.075: 
+                
+                print('FWHM too big')
+                return True
         
     else:
         return False
@@ -359,131 +430,98 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
             best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
             
             chisqr = best_model.chisqr
-            print('Final chi squared: ' + str(chisqr))    
+            # print('Final chi squared: ' + str(chisqr) + '\n\n')    
             return best_model, good_fit
         
-        # Get the peak center ('peak') and the prominences of the peak
-        peaks, properties = find_peaks(sliced_I, prominence = (1, None), width = (0,None)) 
-        #TODO Make sure this number for prominences actually works
-        print('prom:', properties['prominences'])
-        #print('width:', properties['widths'])
-        prom = properties['prominences']
+        model_list, prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, overlap, chisqu_fit_value = get_prom_model_list(q_max, q_min, peak_name, sliced_q, sliced_I, chisqu_fit_value )
         
+        # if peak_name == 'Graphite-LiC12':
+        #     #sig_list, amp_list, chisqu_fit_value, center_list = lpf.Graphite_LiC12_peak_conditions(prom, center_list, sig_list, amp_list, chisqu_fit_value, fwhm_guess_list)
+        #     model_list, prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, overlap, chisqu_fit_value = get_prom_model_list(q_max, q_min, peak_name, sliced_q, sliced_I, chisqu_fit_value)
+            
+        # if peak_name == 'NMC-003':
+        #     #sig_list, amp_list, chisqu_fit_value, center_list = lpf.NMC_003_peak_conditions(prom, center_list, sig_list, amp_list, chisqu_fit_value)
+        #     model_list, prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, overlap, chisqu_fit_value = get_prom_model_list(q_max, q_min, peak_name, sliced_q, sliced_I, chisqu_fit_value)
         
-        #center_list should be the q value corresponding to peaks(peaks is the index for the peaks found with find_peaks using peak prominence)
-        center_list = np.take(sliced_q, peaks)
-        #print('Old Tomato: ', sig, amp, chisqu_fit_value, center_list)
-        if peak_name == 'NMC-003':
-            sig, amp, chisqu_fit_value, center_list = lpf.NMC_003_peak_conditions(prom, center_list, sig, amp, chisqu_fit_value)
+        # if peak_name == 'NMC-other': 
+        #     sig_list, amp_list, chisqu_fit_value, center_list = lpf.NMC_other_peak_conditions(prom, center_list, sig_list, amp_list, chisqu_fit_value)
+        #     model_list, prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, overlap = get_prom_model_list(q_max, q_min, peak_name, sliced_q, sliced_I, chisqu_fit_value)
+
         
-        if peak_name == 'NMC-other': 
-            sig, amp, chisqu_fit_value, center_list = lpf.NMC_other_peak_conditions(prom, center_list, sig, amp, chisqu_fit_value)
-        
-        #print('New Tomato: ', sig, amp, chisqu_fit_value, center_list)
+        print('Centers: ', center_list)
+        print('Prom: ', prom)
+        print('Sig: ', sig_list)
+        print('Amp: ', amp_list)
         num_peaks = len(center_list)
-        new_center_list = []
+        #new_center_list = []    
+
+        best_model = run_model(sliced_q, sliced_I, model_list[0], model_list[1])
+   
+        if peak_name == 'Graphite-LiC12':
+            chisqu_fit_value = lpf.Graphite_LiC12_reset_chisqr(best_model, sliced_q, chisqu_fit_value, prom)
+            best_model = lpf.clean_up_overlap(best_model, sliced_q, sliced_I, q_min, q_max, model_list, overlap, peak_name)
         
-        # Creates target gueses close to the identified peaks (+/- 10% sigma away from center) 
-        for center in range(num_peaks):
-            new_center_list.append(ufo.make_center_list(center_list[center], sig))
-        
-        new_center_list = ufo.iterate_centers(new_center_list)
-        
-        # returns a list of tuples. first value is the model second value is the pars. This looks like this ((model, pars), (model, pars), ...)
-        model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name, sliced_q, sliced_I)
-        
-        model_result_list = []
-       
-       # if you want you can change to -1!! might be good if the thing happens a lot
-        model_result_list = Parallel(n_jobs=2)(delayed(run_model)(sliced_q, sliced_I, model[0], model[1])for model in model_list)
-        
-        # sort the model results for best chi squared value
-        results_sorted = sorted(model_result_list, key=lambda model: model.chisqr)
-        best_model = results_sorted[0]
         chisqr = best_model.chisqr
         print('number of peaks found', num_peaks)
         
-        if peak_name == 'NMC-other' and chisqu_fit_value == 1:
-            #Hit a 3 peak case where peak isn't fit well - define a new chi-squared value to solve and default to automated ufo 
-            chisqu_fit_value = 2000
-            best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
+        # if peak_name == 'NMC-other' and chisqu_fit_value == 1:
+        #     #Hit a 3 peak case where peak isn't fit well - define a new chi-squared value to solve and default to automated ufo 
+        #     "Wierd 3 peak case - Figure out fitting paramters for this case!!!"
+        #     chisqu_fit_value = 2000
+        #     best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
             
         
         # If there are no peaks use prominemce to detemine and return a line
         if peak_name != 'Li':
-            len_prominence = len(properties['prominences'])
+            len_prominence = len(prom)
             if len_prominence != 0:
-                val_promenence = max(properties['prominences']) 
-    
-            if len_prominence == 0 or val_promenence < 1.15: #Previous value 1.15
-                best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
+                val_promenence = max(prom) 
+            
+            if len_prominence == 0 or val_promenence < 2 or (max(fwhm_guess_list) > 0.02 and val_promenence <  3): #Previous value PROM: 1.15, 1.3
+                print('Only background, no peaks found!')
+                model_list= background_parameters(peak_name, q_max, q_min)
+                best_model = run_model(sliced_q, sliced_I, model_list[0], model_list[1])
                 chisqr = best_model.chisqr
-                print('Final chi squared: ' + str(chisqr))
                 plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
-
                 return best_model, good_fit
-        
-        # get centers from the best model
-        # if the centers are too close together, the model likely miss fit 1 peak as 2
-        # this sets the model to call the user fit if the centers are too close together 
-        if peak_name == 'Graphite-LiC12':
-            model_center_list = []
-            comps = best_model.eval_components(x=sliced_q)
-    
-            for prefex in comps.keys():
-                if prefex != 'b_':
-                    model_center_list.append(best_model.params[str(prefex)+'center'].value)
-         
-            if len(model_center_list) > 1:
-                center_dif = float(model_center_list[1]) - float(model_center_list[0])
-                if center_dif < 0.015:
-                    if min(properties['prominences']) < 3:
-                        best_model = reduce_centers(center_dif, model_center_list, num_peaks, q_max, q_min, sig, amp, sliced_q, sliced_I, x_motor, y_motor, peak_name, chisqu_fit_value, plot)
-                        
-                        #Check FWHM of peak 
-                        fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name)
-                        if fwhm_too_big == True:
-                            best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)
-                            
-                        plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
-                        chisqr = best_model.chisqr
-                        print('Final chi squared: ' + str(chisqr))
-                        
-                        return best_model, good_fit
-        
+
         # There is a broad polymer peak overlapping with the LiC6 peak that we need to de-convolute
         # This will increase the centers guesses to find the LiC6 peak
         if peak_name =='LiC6':
             if chisqr >= chisqu_fit_value:
                 if len(center_list) == 1:
-                    print('Attempting to increase number of peaks')
-                    center = float(center_list[0])
-                    center_list = [center - 0.01, center + 0.01]
-                    
-                    new_center_list = []
-                    
-                    # Creates target gueses close to the identified peaks (+/- 10% sigma away from center) 
-                    for center in range(len(center_list)):
-                        new_center_list.append(ufo.make_center_list(center_list[center], sig))
-                    
-                    #new_center_list = ufo.iterate_centers(new_center_list)
-                    model_list = get_prom_model_list(q_max, q_min, center_list, sig, amp, peak_name, sliced_q, sliced_I)
-                    model_result_list = Parallel(n_jobs=2)(delayed(run_model)(sliced_q, sliced_I, model[0], model[1])for model in model_list)
-                    
-                    results_sorted = sorted(model_result_list, key=lambda model: model.chisqr)
-                    best_model = results_sorted[0]
+                    model_list, prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, overlap, chisqu_fit_value = get_prom_model_list(q_max, q_min, peak_name, sliced_q, sliced_I, chisqu_fit_value )
+                    best_model = run_model(sliced_q, sliced_I, model_list[0], model_list[1])
                     chisqr = best_model.chisqr
-                    plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
                     
-                    fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name)
-                    if fwhm_too_big == True:
-                        best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode) 
-                        print('Final chi squared: ' + str(chisqr))
-                        return best_model, good_fit
+        #             print('Attempting to increase number of peaks')
+        #             center = float(center_list[0])
+        #             center_list = [center - 0.01, center + 0.01]
                     
-                    if chisqr <= chisqu_fit_value:
-                        print('Final chi squared: ' + str(chisqr))
-                        return best_model, good_fit
+        #             new_center_list = []
+                    
+        #             # Creates target gueses close to the identified peaks (+/- 10% sigma away from center) 
+        #             for center in range(len(center_list)):
+        #                 new_center_list.append(ufo.make_center_list(center_list[center], sig))
+                    
+        #             #new_center_list = ufo.iterate_centers(new_center_list)
+        #             model_list, prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, overlap, chisqu_fit_value = get_prom_model_list(q_max, q_min, peak_name, sliced_q, sliced_I, chisqu_fit_value)
+        #             model_result_list = Parallel(n_jobs=2)(delayed(run_model)(sliced_q, sliced_I, model[0], model[1])for model in model_list)
+                    
+        #             results_sorted = sorted(model_result_list, key=lambda model: model.chisqr)
+        #             best_model = results_sorted[0]
+        #             chisqr = best_model.chisqr
+        #             plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
+                    
+        #             fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name, overlap)
+        #             if fwhm_too_big == True:
+        #                 best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode) 
+        #                 # print('Final chi squared: ' + str(chisqr) + '\n\n')
+        #                 return best_model, good_fit
+                    
+        #             if chisqr <= chisqu_fit_value:
+        #                 # print('Final chi squared: ' + str(chisqr) + '\n\n')
+        #                 return best_model, good_fit
                     
         # If peak name is Li we need to call Li fitting fucntions to fit the voigt NMC peak
         if peak_name =='Li':
@@ -493,10 +531,10 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
             max_I = max(sliced_I)               
             if chisqr >= chisqu_fit_value:
                 if max_I == last_I: 
-                    center_list = np.take(sliced_q, peaks)
+                    #center_list = np.take(sliced_q, peaks)
                     new_center_list = np.append(center_list, last_I)
                     new_center_list = [new_center_list]
-                    model_list = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name, sliced_q, sliced_I)
+                    model_list, prom, center_list, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, overlap, chisqu_fit_value = get_prom_model_list(q_max, q_min, new_center_list, sig, amp, peak_name, sliced_q, sliced_I, chisqu_fit_value)
                     model_result_list = Parallel(n_jobs=2)(delayed(run_model)(sliced_q, sliced_I, model[0], model[1])for model in model_list)
                     
                     results_sorted = sorted(model_result_list, key=lambda model: model.chisqr)
@@ -505,7 +543,7 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
 
                     if chisqr <= chisqu_fit_value:
                         plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
-                        print('Final chi squared: ' + str(chisqr))
+                        # print('Final chi squared: ' + str(chisqr))
                         return best_model, good_fit
         
         
@@ -513,12 +551,12 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
         initial_fit = True
     
     # Resolve unconstrained solutions with too high FWHM
-    fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name)
+    fwhm_too_big = check_FWHM(sliced_q, best_model, peak_name, overlap)
     if fwhm_too_big == True:
         best_model, good_fit = ufo.user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode)    
             
         chisqr = best_model.chisqr
-        print('Final chi squared: ' + str(chisqr))
+        # print('Final chi squared: ' + str(chisqr) + '\n\n')
         plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
                 
         return best_model, good_fit
@@ -527,15 +565,16 @@ def fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_
     chisqr = best_model.chisqr
     
     #print('\n\nFinal Fit Report: \n\n', best_model.fit_report())
-    print('Final chi squared: ' + str(chisqr))
+    # print('Final chi squared: ' + str(chisqr) + '\n\n')
+    # print('Chi squared aim: ', chisqu_fit_value)
     
     return best_model, good_fit
 
 
 def get_values(best_model, sliced_q, sliced_I):
          
-    # a list of tuples with 4 values. the peak data, fwhm, and center.
-    # Looks like ((peak_data, fwhm, center, guess), (peak_data, fwhm, center, guess), ........)
+    # a list of tuples with 4 values. the peak data, fwhm, and center and amplitude.
+    # Looks like ((peak_data, fwhm, center, amplitude), (peak_data, fwhm, center, amplitude), ........)
     comps_list = []
 
     comps = best_model.eval_components(x=sliced_q)
@@ -586,7 +625,7 @@ def master_function(read_sample_file, num_of_centers,  data_path, q_min, q_max, 
     # Get xy_motor positions
     x_motor, y_motor = get_xy_motor(read_sample_file, data_path, general_input_folder)
     
-    #TODO Normalize data
+    #TODO Normalize data for all cases
     df_norm = normalize_data(df, data_path, x_motor, y_motor)
     #df_norm = df
     
@@ -595,8 +634,9 @@ def master_function(read_sample_file, num_of_centers,  data_path, q_min, q_max, 
 
     # get the best fit for the data
     best_model, good_fit = fit_data(sliced_q, sliced_I, q_max, q_min, num_of_centers, sig, amp, chisqu_fit_value, Li_q_max, Li_q_min, x_motor, y_motor, peak_name, plot, run_mode)
-    #print('Final fit report: \n', best_model.fit_report())
-    
+    print('Final fit report: \n', best_model.fit_report(), '\n\n')
+    print('Final chi squared: ' + str(best_model.chisqr))# + '\n\n')
+    print('Good Fit: ', good_fit, '\n\n')
     if best_model is not None:
         integral_list, fwhm_list, peak_center_list = get_values(best_model, sliced_q, sliced_I)
     else:
@@ -662,11 +702,14 @@ def write_data_with_graph(output_file, df_integrals_temp):
     worksheet.set_default_row(240)
     worksheet.set_column(0, 0, 50)
     worksheet.set_row(0, 20)
-    
     picture_file_paths = list(df_integrals_temp.Plot)
+    
     #add the column names
     worksheet.write_row("A1", df_integrals_temp.columns)
-    [worksheet.insert_image("A"+str(row + 2), filepath, {"x_scale": 0.5, "y_scale": 0.5}) for row, filepath in enumerate(picture_file_paths)]
+    #[worksheet.insert_image("A"+str(row + 2), filepath, {"x_scale": 0.5, "y_scale": 0.5}) for row, filepath in enumerate(picture_file_paths)]
+    for row, filepath in enumerate(picture_file_paths):
+        worksheet.insert_image("A"+str(row + 2), to_raw(filepath), {"x_scale": 0.5, "y_scale": 0.5})
+    
     #[worksheet.write_row("A"+str(row + 2), df_integrals_temp.loc[row, :].values.tolist()) for row in range(df_integrals_temp.shape[0])]
     for row in range(df_integrals_temp.shape[0]):
         cell = "A"+str(row + 2)
@@ -674,3 +717,5 @@ def write_data_with_graph(output_file, df_integrals_temp):
         worksheet.write_row(cell, data)
     workbook.close()
 
+def to_raw(string):
+    return fr"{string}"

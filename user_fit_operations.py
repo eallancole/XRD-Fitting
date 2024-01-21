@@ -45,12 +45,12 @@ def make_target_model(q_max, q_min, model_centers, sig_list, amp_list, b_slope, 
         model = background
         
         # initial guesses     
-        a, b, c, d = 1, 1, 1, 1
+        a, b, c, d = 20000, -40000, 20000, -5000
         pars = background.make_params()
-        pars['b' + '_c0'].set(value = a)
-        pars['b' + '_c1'].set(value = b)
-        pars['b' + '_c2'].set(value = c)
-        pars['b' + '_c3'].set(value = d)
+        pars['b' + '_c0'].set(value = a, min = 0)
+        pars['b' + '_c1'].set(value = b, max = 0)
+        pars['b' + '_c2'].set(value = c, min = 0)
+        pars['b' + '_c3'].set(value = d, max = 0)
 
     else: 
         background = LinearModel(prefix=('b' + '_'))  
@@ -72,14 +72,14 @@ def make_target_model(q_max, q_min, model_centers, sig_list, amp_list, b_slope, 
         # create prefex for each peak
         pref = 'v'+str(peak)+'_'
         peak = PseudoVoigtModel(prefix=pref)
-        # peak = VoigtModel(prefix=pref)
+        #peak = VoigtModel(prefix=pref)
         # set the parimiters for each peak
         pars.update(peak.make_params())
         #pars[pref+'center'].set(value=center, min=q_min, max=q_max)
         pars[pref+'center'].set(value=center, min= center - 0.025, max= center + 0.025)
         pars[pref+'sigma'].set(value=sig_list[index], max = sig_list[index] * 2)
         pars[pref+'amplitude'].set(amp_list[index], min = 0, max = amp_list[index] * 2) #THIS IS APPARENTLY THE AREA
-        #pars[pref+'gamma'].set(value=sig, vary=True, expr='', min = 0) #Use for a Voigt Model
+        #pars[pref+'gamma'].set(value=sig_list[index], vary=True, expr='', min = 0) #Use for a Voigt Model
         pars[pref+'fraction'].set(value=0.5, vary=True) #Use for a Voigt Model
         index += 1
         
@@ -154,23 +154,33 @@ def targeted_model(new_center_list, sig_list, amp_list, q_max, q_min, sliced_q, 
 def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fit_value, x_motor, y_motor, peak_name, plot, good_fit, run_mode):
     print('Chi square aim: ', chisqu_fit_value)
     good = 'n'
-    print("\n\nfit not found")
+    print("\n\nHit the User Fit")
     print('The chisqr is ', best_model.chisqr)
+    peak_style = 'Needs to be redefined'
     #print('\n\nOriginal Fit Report: \n\n', best_model.fit_report())
-    
     pf.plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
     #plt.pause(1)
-   
+    
+    prom, centers, sig_list, amp_list, left_ips_base, right_ips_base, fwhm_guess_list, height_list = pf.make_initial_guesses(sliced_q, sliced_I)
     peaks, properties = scipy.signal.find_peaks(sliced_I, prominence = (1, None))
+    
     #print(properties['prominences'])
-    len_prominence = len(properties['prominences'])
+    len_prominence = len(prom)
+    
+    # Get FWHM list from original best_model
+    model_fwhm_list = []
+    comps = best_model.eval_components(x=sliced_q)
+    
+    for prefex in comps.keys():
+        if prefex != 'b_':
+            model_fwhm_list.append(best_model.params[str(prefex)+'fwhm'].value)
     
     if len_prominence != 0:
-        val_promenence = max(properties['prominences']) 
+        val_promenence = max(prom) 
+        fwhm_max = max(model_fwhm_list)
     
-    if len_prominence == 0 or val_promenence <  1.15 or (len_prominence == 1 and val_promenence < 1.35): #TODO Convolutes logic!!! Needs fixing!
-        
-        #TODO add in FWHM contraint for lines!! (if fwhm > x and prom < y, then fit a line)
+    # Creates a model that is just background (linear or polynomial depending on q region)
+    if len_prominence == 0 or val_promenence <  2 or (fwhm_max > 0.02 and val_promenence <  3):
         
         if peak_name == 'Graphite-LiC12':
             b_slope = '-150, 0'
@@ -191,19 +201,30 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
         best_model = pf.run_model(sliced_q, sliced_I, model[0], model[1])
         chisqr = best_model.chisqr
         if chisqr <= 2 * chisqu_fit_value: #was 3
+            print('Good Fit: ', good_fit)
             return best_model, good_fit
     
-    if peak_name == 'NMC-other' and len_prominence == 3:
-        peak_style = '10'
+    # if peak_name == 'NMC-other' and len_prominence == 3:
+    #     peak_style = '10'
+    #elif peak_name == 'NMC-other' and 
     
-    else: 
-        if run_mode == True:
-            good_fit = False
-            return best_model, good_fit
+    # Identify two graphite peaks together
+    if peak_name == 'Graphite-LiC12' and len_prominence == 2:
+        center_diff = abs(centers[1] - centers[0])
+        print('UFO Center diff: ', center_diff)
+        if center_diff < 0.035 and center_diff > 0.005:
+            print('Made it to this branch!')
+            peak_style = '7'
         
+    if peak_style == 'Needs to be redefined' and run_mode == False:
         print('\nPeak class options: "y"- GoodFit , "1"-BigSmall, "2"-SmallBig,"3"-OneBig, "4"-OneSmall , "5"-Line, "6"-TwoSmall ,"7"-TwoTogether , "8"-Li-NMC,"9"-NMC-no-Li ,"10"-3peak,"n"- other \n')
-        peak_style = input('Is the fit good? If yes enter "y", otherwise enter peak class to fit. \n')
-
+        print('Hit "s" if you want to skip and label the fit as bad. \n' )  
+        peak_style = input('Is the fit good? If yes enter "y", otherwise enter peak class to fit or "s" to skip. \n')
+    
+    elif peak_style == 'Needs to be redefined' and run_mode == True:
+        good_fit = False
+        return best_model, good_fit
+    
     while peak_style != 'y':  
         # try:
         
@@ -227,28 +248,28 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
         else: 
             b_slope = input('Enter background slope min and max separated by comma \n')    
         
-        peaks, properties = find_peaks(sliced_I, prominence = (1, None))
+        #peaks, properties = find_peaks(sliced_I, prominence = (1, None))
 
         if peak_style == '1': # "BigSmall" One larger peak with a smaller detached peak at a higher q
             #center_list should be the q value corresponding to peaks(peaks is the index for the peaks found with find_peaks using peak prominence)
-            centers = np.take(sliced_q, peaks)
+            #centers = np.take(sliced_q, peaks)
             if len(centers) != 2:
                 centers =  input('Enter peak centers separated by comma \n')
-            amp_list = '3, 0.104'
+            amp_list = '3, 0.2'
             sig_list = '0.005, 0.0031'
         
         elif peak_style == '2': # "SmallBig" One smaller peak, then a larger peaks at a higher q
-            centers = np.take(sliced_q, peaks)
+            #centers = np.take(sliced_q, peaks)
             if len(centers) != 2:
                 centers =  input('Enter peak centers separated by comma \n')
             amp_list = '0.2, 3'
-            sig_list = '0.0031, 0.005'
+            sig_list = '0.003, 0.005'
             
-        elif peak_style == '3':
+        elif peak_style == '3': #'OneBig'
             # Not fitting really big peaks
-            centers = np.take(sliced_q, peaks)
+            #centers = np.take(sliced_q, peaks)
             if len(centers) > 1:
-                center_index = peaks[np.argmax(properties['prominences'])]
+                center_index = peaks[np.argmax(prom)]
                 centers = [np.take(sliced_q, center_index)]
             
             if peak_name == 'LiC6':
@@ -266,16 +287,16 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
                 sig_list = '0.005'
                 
             
-        elif peak_style == '4':
+        elif peak_style == '4': #"4"-OneSmall 
             # Doesn't look like it is setup to fit really small peaks as one small
-            centers = np.take(sliced_q, peaks)
+            #centers = np.take(sliced_q, peaks)
             if len(centers) > 1:
-                center_index = peaks[np.argmax(properties['prominences'])]
+                center_index = peaks[np.argmax(prom)]
                 centers = [np.take(sliced_q, center_index)] 
-            amp_list = '5'
-            sig_list = '0.005'
+            amp_list = '0.5'
+            sig_list = '0.003'
         
-        elif peak_style == '5':
+        elif peak_style == '5': #"5"-Line
             b_slope = b_slope.split(',')
             model = make_linear_model(q_max, q_min, b_slope, peak_name)
             best_model = pf.run_model(sliced_q, sliced_I, model[0], model[1])
@@ -284,7 +305,7 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
 
             return best_model, good_fit
         
-        elif peak_style == '6':
+        elif peak_style == '6': #"6"-TwoSmall
             
             #center_list should be the q value corresponding to peaks(peaks is the index for the peaks found with find_peaks using peak prominence)
             centers = np.take(sliced_q, peaks)
@@ -293,7 +314,7 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
             sig_list = '0.003, 0.003'
             # need to add condition for peaks being too close, maybe add min and max closer to centers
                 
-        elif peak_style == '7':
+        elif peak_style == '7': #"7"-TwoTogether
             centers = np.take(sliced_q, peaks)
             
             if peak_name == 'LiC6':
@@ -308,14 +329,20 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
                     centers =  input('Enter peak centers separated by comma \n')
             
             elif peak_name == 'Graphite-LiC12':
-                amp_list = '1, 1'
-                sig_list = '0.003, 0.003'
-                
                 if len(centers) == 1:
                     center = float(centers[0])
                     centers = [center - 0.01, center + 0.01]
-                elif len(centers) != 1:
+                    amp_list = str(amp_list[0]) + ', ' + str(amp_list[0])
+                    sig_list = str(sig_list[0]) + ', ' + str(sig_list[0])
+                elif len(centers) == 2:
+                    # centers defined above!
+                    amp_list = str(max(amp_list)) + ', ' + str(max(amp_list))
+                    sig_list = str(max(sig_list)) + ', ' + str(max(sig_list))                    
+                
+                else:
                     centers =  input('Enter peak centers separated by comma \n')
+                    amp_list = input('Enter area (amplitude) of peaks separated by comma (~5 graphite)\n')
+                    sig_list = input('Enter the approximate standard deviations separated by comma (~0.005 graphite) \n')
 
             else: 
                 print('Fuck!')
@@ -374,6 +401,11 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
                 # for i in range(len(centers)): 
                 #     centers[i] = float(centers[i])
         
+        elif peak_style == 's':
+            # Skips the fitting to figure out later (Peak is labled as a bad fit)
+            print('***Fit quality labeled as bad fit (good_fit = False) So this can be refit later. ')
+            good_fit = False
+            return best_model, good_fit
         
         else:
             #b_slope = input('Enter background slope min and max separated by comma \n') 
@@ -390,10 +422,12 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
             centers = centers.split(',')
             for i in range(len(centers)): 
                 centers[i] = float(centers[i])
-        
-        amp_list = amp_list.split(',')
-        sig_list = sig_list.split(',')
-        b_slope = b_slope.split(',')
+        if type(amp_list) == str:
+            amp_list = amp_list.split(',')
+        if type(sig_list) == str:
+            sig_list = sig_list.split(',')
+        if type(b_slope) == str:
+            b_slope = b_slope.split(',')
         
         center_list = []
         
@@ -412,15 +446,21 @@ def user_model(best_model, sliced_q, sliced_I, sig, amp, q_max, q_min, chisqu_fi
         pf.plot_peaks(best_model, sliced_q, sliced_I, x_motor, y_motor, peak_name, plot)
         plt.pause(1)
         
-        print('\n\nNew Fit Report: \n\n', best_model.fit_report())
+        #print('\n\nNew Fit Report: \n\n', best_model.fit_report())
         
         if best_model.chisqr <= chisqu_fit_value * 2: # change back to 2
             peak_style = 'y'
+        elif run_mode == True: 
+            good_fit = False
+            print('Fit quality labeled as bad fit (good_fit = False) So this can be refit later. ')
+            return best_model, good_fit
         else: 
-            peak_style = input('enter "y" to continue. \nTo try again enter "n" to input paramters manually or enter peak class # from above.\nIf fit is bad and you want to revist later enter "b" for bad fit. \n')
-            if peak_style == 'b':
+            peak_style = input('\nEnter "y" to continue. \nTo try again enter "n" to input paramters manually or enter peak class # from above.\nIf fit is bad and you want to revist later enter "s" to skip bad fit. \n')
+            if peak_style == 's':
                 good_fit = False
                 print('Fit quality labeled as bad fit (good_fit = False) So this can be refit later. ')
+                return best_model, good_fit
+                
         
         # except:
         #      print('operation filed with the following messege')

@@ -32,11 +32,16 @@ startTime = time.time()
 
 # Sample info
 #sample_name = 'S1_LN_10psi_Ch10_0120922_map_02' #discharged
-sample_name = 'S1_LN_10psi_Ch10_0120922_map_01-4' #charged
+#sample_name = 'S1_LN_10psi_Ch10_0120922_map_01-4' #charged
+
+
+#New sample test
+sample_name = 'EAC_S5_50psi_A_C8_091823_map_charge_01'
+#sample_name = 'EAC_S7_125psi_A_C10_091923_map_charge_6C_02' #charged
 
 plot = True
 restart_run = False
-run_mode = True
+run_mode = False
 refit_mode = False
 
 # numper of centers to try
@@ -59,8 +64,11 @@ df_integrals = pd.DataFrame() #columns=['Sample', 'file_name', 'x motor', 'y mot
 # TODO need to add in chi squared and look at how model feeds in
 
 # path to all the tiff files
-general_input_folder = r'D:\NSLS-II Winter 2023'
+#general_input_folder = r'D:\NSLS-II Winter 2023'
 #general_input_folder = r'D:\NSLS-II June 2023'
+general_input_folder = r'E:\NSLS-II Beamtime Nov. 2023\Raw XRD Data'
+#general_input_folder = r'E:\NSLS-II Back-up 2023-1\tiff_base'
+
 input_folder = os.path.join(general_input_folder, sample_name, 'integration')
 
 general_output_folder = r'C:\Users\Elizabeth Allan-Cole\Desktop\XRD Data Processing\NSLS-II Winter 2023\Processing\Initial_fit\Class-testing'
@@ -78,14 +86,14 @@ if not os.path.exists(output_folder):
 
 
 # Graphite/LiC12 only
-q_range_dict = {'Graphite-LiC12':[1.75, 1.9, 200, 0.005, 5]} #Stage 2, 3, 4
+#q_range_dict = {'Graphite-LiC12':[1.74, 1.91, 200, 0.005, 5]} #Stage 2, 3, 4
 
 # LiC6 only
-#q_range_dict = {'LiC6':[1.6, 1.75, 15, 0.1, 100]} #Stage 1
+q_range_dict = {'LiC6':[1.6, 1.75, 20, 0.1, 100]} #Stage 1
 
 # nmc peaks only
 #q_range_dict = {'NMC-003':[1.25, 1.36, 20, 0.1, 30]}
-#q_range_dict = {'NMC-other':[2.55, 2.74, 5000, 0.1, 30]}
+#q_range_dict = {'NMC-other':[2.54, 2.74, 5000, 0.1, 30]}
 
 # Li peaks only
 #q_range_dict = {'Li': [2.48, 2.58, 3, 0.05, 1]} #'Li-extended': [2.45, 2.58, 10, 0.05, 2]} #go to 2.605 ish 
@@ -206,7 +214,9 @@ for element in q_range_dict.keys(): # for each peak defined in q_rage_dict
                         fit_quality = 'Good' # for good fit
                         
                     plot_file = os.path.join(savePath, sample_name + '_detailed.png' )
-                    plot_file = plot_file.replace("\\", "\\\\")
+                    # TODO if xlsx writer continues to not throu file not found delete the below line
+                    #plot_file = plot_file.replace("\\", "\\\\")
+                    
                     # add the sample information and position info: plot, fit_quality, -- ,i_value ,sample_name, file name, x_motor, y_motor, chi_squared
                     info_list = [plot_file, fit_quality, '', i, get_integrals[0], list_of_files[i], get_integrals[1], get_integrals[2], get_integrals[6].chisqr]
                     # add then together
@@ -252,10 +262,15 @@ for element in q_range_dict.keys(): # for each peak defined in q_rage_dict
         df_integrals = pd.concat([df_integrals, df_integrals_temp])
 
 # save the master dataframe
-file_name = str(get_integrals[0]) + '_all_data_test.xlsx'
+file_name = str(get_integrals[0]) + '_' + element + '_all_data_test.xlsx'
 output_file = os.path.join(output_folder, file_name)
 
 pf.write_data_with_graph(output_file, df_integrals)
 
 executionTime = (time.time() - startTime)
 print('Execution time in seconds: ' + str(executionTime))
+
+
+# TODO Add in a check for whether data is normalized
+# TODO Move line fitting out of user fit
+# TODO Add scipy guesses into userfit 
